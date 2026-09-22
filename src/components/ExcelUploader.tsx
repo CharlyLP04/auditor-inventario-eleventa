@@ -94,7 +94,7 @@ export function ExcelUploader({
         </div>
         <div>
           <h3>Catálogo eleventa POS</h3>
-          <p className="text-xs text-[#888888] font-semibold m-0">Sincronización directa vía Excel o respaldo JSON</p>
+          <p className="text-xs text-[#888888] font-semibold m-0">Importación local de Excel o respaldo JSON</p>
         </div>
       </div>
 
@@ -115,7 +115,7 @@ export function ExcelUploader({
           type="file"
           accept=".xlsx,.xls,.csv,.json"
           disabled={busy}
-          className="hidden"
+          className="sr-only"
           onChange={event => {
             const file = event.target.files?.[0];
             event.target.value = '';
@@ -128,7 +128,7 @@ export function ExcelUploader({
       </label>
 
       {busy && (
-        <div className="p-4 bg-[#262626] rounded-2xl border border-white/10 text-center text-sm font-bold text-[#FF6E42] animate-pulse">
+        <div role="status" className="p-4 bg-[#262626] rounded-2xl border border-white/10 text-center text-sm font-bold text-[#FF6E42] animate-pulse">
           Procesando catálogo en segundo plano…
         </div>
       )}

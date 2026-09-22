@@ -28,15 +28,17 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
     return { theoreticalValue: theo, physicalValue: phys };
   }, [products]);
 
-  const netBalance = stats.surplusCostValue - stats.missingCostValue;
-  const accuracyRate = stats.totalCatalog > 0
-    ? Math.max(0, Math.min(100, Math.round((stats.matchCount / (stats.auditedCount || 1)) * 100)))
-    : 100;
+  const netBalance = roundQuantity(stats.surplusCostValue - stats.missingCostValue);
+  const countedRegistered = stats.matchCount + stats.missingCount + stats.surplusCount;
+  const accuracyRate = countedRegistered > 0
+    ? Math.round((stats.matchCount / countedRegistered) * 100)
+    : null;
+  const zeroCostCount = products.filter(p => !p.isUnregistered && p.cost === 0).length;
 
   // Top 4 mermas más costosas
   const topLosses = useMemo(() => {
     return products
-      .filter(p => isCounted(p) && productStatus(p) === 'missing')
+      .filter(p => isCounted(p) && productStatus(p) === 'missing' && p.cost > 0)
       .map(p => {
         const diff = roundQuantity(p.physicalStock - p.theoreticalStock);
         const lossAmount = Math.abs(diff) * p.cost;
@@ -66,7 +68,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
           <div className="flex items-center gap-3">
             <div className="px-4 py-2 rounded-full bg-[#161616] border border-white/10 text-right">
               <span className="text-[10px] text-[#888888] uppercase font-bold tracking-wider block">Precisión</span>
-              <span className="text-sm font-black text-[#F2F1ED]">{accuracyRate}% fidelidad</span>
+              <span className="text-sm font-black text-[#F2F1ED]">{accuracyRate === null ? 'Sin conteo' : `${accuracyRate}% coinciden`}</span>
             </div>
           </div>
         </div>
@@ -96,18 +98,24 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
               ? 'bg-[#004E72]/30 border-[#004E72]'
               : 'bg-[#161616]/60 border-white/5'
           }`}>
-            <span className="text-xs font-bold uppercase tracking-wider block text-[#F2F1ED]/80">Impacto Neto en Caja</span>
+            <span className="text-xs font-bold uppercase tracking-wider block text-[#F2F1ED]/80">Diferencia neta al costo</span>
             <div className={`text-xl sm:text-2xl font-black mt-1 ${
               netBalance < 0 ? 'text-[#ff8a9e]' : netBalance > 0 ? 'text-[#7dd3fc]' : 'text-[#F2F1ED]'
             }`}>
               {netBalance >= 0 ? '+' : ''}{money.format(netBalance)}
             </div>
             <span className="text-[11px] text-[#F2F1ED]/70 mt-0.5 block">
-              {netBalance < 0 ? 'Pérdida neta de capital' : netBalance > 0 ? 'Superávit en inventario' : 'Sin desviaciones'}
+              {netBalance < 0 ? 'Faltante neto valorado' : netBalance > 0 ? 'Sobrante neto valorado' : 'Sin diferencia neta valorada'}
             </span>
           </div>
         </div>
       </div>
+
+      {zeroCostCount > 0 && (
+        <p className="message warning" role="status">
+          {zeroCostCount} productos del catálogo tienen costo en cero. Sus diferencias se cuentan en piezas, pero no aportan valor a las mermas o sobrantes en pesos. Los importes solo reflejan productos contados con el costo disponible; no son movimientos de caja.
+        </p>
+      )}
 
       {/* 2. Tarjetas Swatch Principales: Faltantes vs Sobrantes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -152,7 +160,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
               +${stats.surplusCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-[#F2F1ED]/80 font-bold mt-2 leading-relaxed">
-              {stats.totalSurplusPieces} piezas físicas encontradas que no estaban dadas de alta.
+              {stats.totalSurplusPieces} piezas por encima de la existencia de productos registrados. Los códigos nuevos se muestran por separado.
             </p>
           </div>
         </div>

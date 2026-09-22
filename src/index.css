@@ -770,3 +770,38 @@ main {
   border: 2px dashed var(--app-sand);
   border-radius: 24px;
 }
+
+/* Exportación e impresión: el reporte detallado solo se muestra en papel. */
+.print-report { display: none; }
+.export-dialog { max-width: calc(100vw - 16px); overscroll-behavior: contain; }
+.download-link { display: block; padding: 12px; margin-top: 8px; min-height: 48px; color: var(--app-pearl); border: 1px solid var(--app-sand); border-radius: 12px; overflow-wrap: anywhere; text-decoration: underline; }
+.upload-target:focus-within { outline: 2px solid var(--app-orange); outline-offset: 4px; }
+
+/* El menú lateral cabe desde 1024px; las cinco columnas necesitan más espacio. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .inventory-columns { display: none; }
+  .inventory-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inventory-row .product-info, .inventory-row .status-cell, .inventory-row .quantity-cell { grid-column: 1 / -1; }
+  .inventory-row .mobile-only { display: inline; }
+  .count-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .scan-flash { display: none; }
+}
+
+@media print {
+  body { background: white !important; color: black !important; user-select: text; }
+  .app-header, .app-nav, .skip-link, .app-main > :not(.export-dialog), .export-screen { display: none !important; }
+  .app-shell, #root { min-height: 0; }
+  .app-main { margin: 0 !important; padding: 0 !important; max-width: none; animation: none !important; transform: none !important; }
+  .export-dialog[open] { position: static !important; display: block; width: 100%; max-width: none; max-height: none; overflow: visible; margin: 0; padding: 0; color: black; background: white; }
+  .export-dialog::backdrop { display: none; }
+  .print-report { display: block; font-size: 10pt; }
+  .print-report table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  .print-report th, .print-report td { border: 1px solid #999; padding: 6px; text-align: left; overflow-wrap: anywhere; }
+  .print-report tr { break-inside: avoid; }
+  .print-report thead { display: table-header-group; }
+  @page { size: A4 landscape; margin: 14mm; }
+}

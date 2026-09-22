@@ -16,7 +16,22 @@ function numeric(value: unknown, label: string, negative = false): number {
   return result;
 }
 export function parseEleventaExcel(fileBuffer: ArrayBuffer): { products: Product[]; errors: string[] } {
-  const workbook = XLSX.read(fileBuffer, { type: 'array', raw: true, cellText: true, sheetRows: 20022 });
+  const bytes = new Uint8Array(fileBuffer);
+  const prefix = bytes.subarray(0, 512);
+  // Algunos .xls de eleventa son TSV en Windows-1252, no libros binarios.
+  // Leer el texto explícitamente conserva acentos y códigos con ceros iniciales.
+  const isTabSeparatedText = prefix.includes(9) && !prefix.includes(0)
+    && !(prefix[0] === 0x50 && prefix[1] === 0x4b)
+    && !(prefix[0] === 0xd0 && prefix[1] === 0xcf);
+  let workbook: XLSX.WorkBook;
+  if (isTabSeparatedText) {
+    let text: string;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch { text = new TextDecoder('windows-1252').decode(bytes); }
+    workbook = XLSX.read(text, { type: 'string', FS: '\t', raw: true, cellText: true, sheetRows: 20022 });
+  } else {
+    workbook = XLSX.read(fileBuffer, { type: 'array', raw: true, cellText: true, sheetRows: 20022 });
+  }
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!worksheet) return { products: [], errors: ['El archivo no contiene hojas.'] };
   const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
@@ -26,11 +41,13 @@ export function parseEleventaExcel(fileBuffer: ArrayBuffer): { products: Product
     stock: ['existencia', 'existencias', 'stock', 'cantidad', 'hay', 'stockteoricoeleventa', 'inventario'],
     cost: ['costo', 'costounitario', 'preciocosto', 'preciodecompra', 'compra'],
     price: ['precio', 'precioventa', 'preciodeventa', 'venta'],
+    wholesale: ['preciomayoreo', 'preciodemayoreo', 'mayoreo'],
+    minimum: ['invminimo', 'inventariominimo', 'existenciaminima', 'stockminimo'],
     department: ['departamento', 'categoria', 'familia'],
     unit: ['tipo', 'tipodeventa', 'unidad'],
   };
   let header = -1;
-  let columns: Record<keyof typeof aliases, number> = { code: -1, description: -1, stock: -1, cost: -1, price: -1, department: -1, unit: -1 };
+  let columns: Record<keyof typeof aliases, number> = { code: -1, description: -1, stock: -1, cost: -1, price: -1, wholesale: -1, minimum: -1, department: -1, unit: -1 };
   for (let index = 0; index < Math.min(rows.length, 20); index++) {
     const normalized = rows[index].map(normalize);
     const found = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, normalized.findIndex(h => names.includes(h))])) as typeof columns;
@@ -52,9 +69,13 @@ export function parseEleventaExcel(fileBuffer: ArrayBuffer): { products: Product
       if (seen.has(code)) throw new Error(`código duplicado: ${code}`);
       seen.add(code);
       const description = String(row[columns.description] ?? '').trim();
-      if (!description) throw new Error(`falta la descripción de ${code}`);
-      products.push({ code, description, theoreticalStock: numeric(row[columns.stock], 'Existencia', true), physicalStock: 0,
+      // eleventa puede exportar productos cuyo nombre está en Código y la descripción vacía.
+      // Se usa el código para mostrarlos y se conserva el campo original para exportar.
+      products.push({ code, description: description || code, sourceDescription: description,
+        theoreticalStock: numeric(row[columns.stock], 'Existencia', true), physicalStock: 0,
         cost: numeric(row[columns.cost], 'Costo'), price: numeric(row[columns.price], 'Precio de venta'),
+        wholesalePrice: columns.wholesale >= 0 ? numeric(row[columns.wholesale], 'Precio Mayoreo') : undefined,
+        minStock: columns.minimum >= 0 ? numeric(row[columns.minimum], 'Inv. Minimo') : undefined,
         department: String(row[columns.department] ?? '').trim() || 'General',
         unitType: normalize(row[columns.unit]) === 'granel' ? 'granel' : 'unidad', counted: false });
     } catch (error) { errors.push(`Fila ${index + 1}: ${error instanceof Error ? error.message : 'datos inválidos'}.`); }

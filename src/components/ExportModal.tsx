@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, Printer, CheckCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { Product, AuditStats } from '../types';
-import { exportAuditToEleventaExcel } from '../services/eleventaExporter';
+import { exportAuditToEleventaExcel, exportEleventaAdjustment } from '../services/eleventaExporter';
+import { startDownload, releaseDownload } from '../services/fileDownload';
+import type { PreparedDownload } from '../services/fileDownload';
 import { soundService } from '../services/audioService';
 import { isCounted, productStatus, roundQuantity } from '../services/auditState';
 
@@ -20,7 +22,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   stats,
 }) => {
   const [exportError, setExportError] = useState('');
+  const [download, setDownload] = useState<PreparedDownload | null>(null);
+  const downloadRef = useRef<PreparedDownload | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const adjustmentProducts = products.filter(p => isCounted(p) && !p.isUnregistered);
+
+  useEffect(() => () => {
+    if (downloadRef.current) releaseDownload(downloadRef.current);
+  }, []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -28,12 +37,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     if (!isOpen && dialog?.open) dialog.close();
   }, [isOpen]);
 
-  const handleExportExcel = () => {
+  const handleExportExcel = (kind: 'report' | 'adjustment') => {
     try {
-      exportAuditToEleventaExcel(products, stats);
+      const next = kind === 'adjustment'
+        ? exportEleventaAdjustment(products)
+        : exportAuditToEleventaExcel(products, stats);
+      if (downloadRef.current) releaseDownload(downloadRef.current);
+      downloadRef.current = next;
+      setDownload(next);
       setExportError('');
-    } catch {
-      setExportError('No se pudo generar el Excel. Intenta de nuevo o descarga un respaldo JSON.');
+      try { startDownload(next); }
+      catch { setExportError('El navegador no inició la descarga. Usa el enlace Guardar archivo que aparece abajo.'); }
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'No se pudo generar el Excel. Descarga un respaldo JSON para conservar tu conteo.');
       return;
     }
     soundService.playSuccessBeep();
@@ -95,20 +111,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         <p className="text-xs text-[#B38F6F] font-semibold leading-relaxed">
-          El archivo Excel generado contiene el formato exacto requerido por el módulo de <strong>Ajustes de Inventario</strong> de eleventa.
+          El reporte incluye todo el catálogo, aunque haya productos pendientes. El ajuste contiene únicamente los {adjustmentProducts.length} productos registrados con conteo confirmado y conserva las columnas disponibles del archivo original.
         </p>
 
         {exportError && <p role="alert" className="text-xs text-[#FF6E42] font-bold">{exportError}</p>}
+        {download && (
+          <div className="text-xs text-[#CCCCCC] break-words" role="status">
+            Archivo preparado. Si no comenzó la descarga, usa este enlace:
+            <a href={download.url} download={download.fileName} className="download-link">Guardar archivo: {download.fileName}</a>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3">
           <button
-            disabled={stats.auditedCount === 0}
-            onClick={handleExportExcel}
+            disabled={products.length === 0}
+            onClick={() => handleExportExcel('report')}
             className="w-full py-4 px-6 bg-[#FF6E42] hover:bg-[#ff8560] active:scale-[0.98] text-[#161616] font-black rounded-full shadow-xl shadow-[#FF6E42]/25 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm uppercase tracking-wider"
           >
             <Download className="w-5 h-5 stroke-[2.5]" />
-            Descargar Excel para eleventa (.xlsx)
+            Descargar reporte completo (.xlsx)
           </button>
+
+          <button
+            disabled={adjustmentProducts.length === 0}
+            onClick={() => handleExportExcel('adjustment')}
+            className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#303030] text-[#F2F1ED] text-xs font-bold rounded-full border border-white/10 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" aria-hidden="true" />
+            Descargar ajuste de inventario (.xlsx)
+          </button>
+          {adjustmentProducts.length === 0 && <p className="text-xs text-[#CCCCCC]">Para generar un ajuste, confirma la cantidad de al menos un producto del catálogo. Un cero confirmado registra un faltante total.</p>}
+          {adjustmentProducts.some(p => p.wholesalePrice === undefined || p.minStock === undefined) && <p className="text-xs text-[#CCCCCC]">Este conteo no conserva todos los valores de mayoreo o mínimo. Las columnas incompletas se omiten del ajuste para no reemplazarlas por ceros.</p>}
 
           <button
             onClick={handlePrint}
@@ -125,9 +158,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             ¿Cómo aplicar el ajuste en eleventa?
           </div>
           <p className="text-[#888888] leading-relaxed">
-            1. Abre el Excel descargado y valida las mermas.<br />
-            2. En eleventa, ve a <strong>F4 Inventario &gt; Ajustes</strong> (o <strong>F3 Productos &gt; Importar</strong>).<br />
-            3. Selecciona la hoja <strong>Ajuste_Inventario_eleventa</strong> para actualizar tus existencias físicas.
+            1. Descarga el ajuste y revisa las cantidades confirmadas.<br />
+            2. Revisa la correspondencia de columnas en la opción de importación o ajuste de tu versión de eleventa.<br />
+            3. Usa el archivo <strong>Ajuste_Inventario_eleventa</strong>, que contiene una sola hoja. Este programa no modifica automáticamente la base de datos de eleventa.
           </p>
         </div>
       </div>

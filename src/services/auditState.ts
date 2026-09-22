@@ -36,6 +36,9 @@ export function validateProducts(value: unknown): value is Product[] {
       && Number.isFinite(p.theoreticalStock) && Math.abs(p.theoreticalStock) <= MAX_QUANTITY
       && (p.counted === undefined || typeof p.counted === 'boolean')
       && (p.isUnregistered === undefined || typeof p.isUnregistered === 'boolean')
+      && (p.sourceDescription === undefined || typeof p.sourceDescription === 'string')
+      && (p.wholesalePrice === undefined || validQuantity(p.wholesalePrice))
+      && (p.minStock === undefined || validQuantity(p.minStock))
       && (p.lastScannedAt === undefined || typeof p.lastScannedAt === 'string');
   });
 }
