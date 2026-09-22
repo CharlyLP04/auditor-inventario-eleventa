@@ -1,9 +1,10 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Download, RotateCcw, ShieldCheck } from 'lucide-react';
+import { Download, RotateCcw, ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import type { Product } from './types';
 import { InventoryTable } from './components/InventoryTable';
 import { AuditSummary } from './components/AuditSummary';
 import { InstallApp } from './components/InstallApp';
+import { BrandLogo } from './components/BrandLogo';
 import { StoreIcon, TicketIcon, CardStockIcon, GearSettingsIcon } from './components/CustomIcons';
 import { soundService } from './services/audioService';
 import { calculateStats, roundQuantity, validQuantity } from './services/auditState';
@@ -80,13 +81,13 @@ export function App() {
     <div className="app-shell">
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
       
-      {/* Header con estética Obsidian y Warm Sand */}
+      {/* Header con el nuevo BrandLogo vectorial y estética Obsidian */}
       <header className="app-header">
         <div className="brand">
-          <span className="brand-icon" aria-hidden="true">e</span>
+          <BrandLogo size={44} />
           <div>
             <h1>Auditor eleventa</h1>
-            <p><ShieldCheck size={13} aria-hidden="true" /> Inventario Físico · Local</p>
+            <p><ShieldCheck size={13} aria-hidden="true" /> Inventario Físico · Alta Precisión</p>
           </div>
         </div>
 
@@ -161,16 +162,19 @@ export function App() {
               <div className="count-layout">
                 <BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} />
                 <aside className="desktop-only">
-                  <AuditSummary stats={stats} />
+                  <AuditSummary stats={stats} products={products} />
                   <p className="message mt-4">
                     Escanea cada pieza o selecciona la cantidad por caja. En PC también puedes ingresar códigos con un lector USB o Bluetooth.
                   </p>
                 </aside>
               </div>
             ) : (
-              <div className="empty-state">
+              <div className="empty-state max-w-xl mx-auto">
+                <div className="w-16 h-16 rounded-full bg-[#B38F6F]/20 text-[#B38F6F] flex items-center justify-center mx-auto mb-4 border border-[#B38F6F]/30">
+                  <FileSpreadsheet size={30} />
+                </div>
                 <h3>Carga tu catálogo para comenzar</h3>
-                <p>Importa el archivo Excel de eleventa o usa un respaldo guardado.</p>
+                <p>Importa el archivo Excel de eleventa para iniciar el conteo físico en tienda.</p>
                 <button className="primary" onClick={() => setActiveTab('upload')}>
                   Cargar archivo
                 </button>
@@ -182,7 +186,7 @@ export function App() {
             <InventoryTable products={products} onUpdateQuantity={handleUpdateQuantity} />
           )}
 
-          {activeTab === 'stats' && <AuditSummary stats={stats} />}
+          {activeTab === 'stats' && <AuditSummary stats={stats} products={products} />}
 
           {activeTab === 'upload' && (
             <ExcelUploader onProductsLoaded={handleProductsLoaded} currentCount={products.length} />

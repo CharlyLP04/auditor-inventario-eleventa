@@ -232,9 +232,16 @@ export function InventoryTable({
       </div>
 
       {!visible.length && (
-        <div className="empty-state">
-          <h3>No hay productos para mostrar</h3>
-          <p>{products.length ? 'Prueba otro código, departamento o filtro.' : 'Carga un archivo para iniciar el conteo.'}</p>
+        <div className="empty-state max-w-md mx-auto my-8 p-8 border border-white/10 rounded-[28px] bg-[#202020] text-center shadow-xl">
+          <div className="w-16 h-16 rounded-full bg-[#B38F6F]/20 text-[#B38F6F] flex items-center justify-center mx-auto mb-4 border border-[#B38F6F]/30">
+            <span className="text-2xl">📋</span>
+          </div>
+          <h3 className="text-lg font-black text-[#F2F1ED]">No hay productos en esta vista</h3>
+          <p className="text-xs text-[#888888] mt-2 leading-relaxed">
+            {products.length
+              ? 'No se encontraron coincidencias con la búsqueda o filtro actual.'
+              : 'Para comenzar a auditar, carga tu catálogo exportado desde eleventa en la sección "eleventa".'}
+          </p>
         </div>
       )}
 
