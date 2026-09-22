@@ -1,120 +1,68 @@
 import * as XLSX from 'xlsx';
 import type { Product } from '../types';
-
-function normalizeHeader(header: string): string {
-  return header
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function sanitizeBarcode(val: unknown): string {
-  if (val === null || val === undefined) return '';
-  if (typeof val === 'number') {
-    return val.toLocaleString('fullwide', { useGrouping: false });
+import { MAX_QUANTITY } from './auditState';
+const normalize = (value: unknown) => String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+function numeric(value: unknown, label: string, negative = false): number {
+  if (value === undefined || value === null || value === '') return 0;
+  let cleaned = value;
+  if (typeof value === 'string') {
+    const text = value.trim().replace(/^(?:MXN|\$)\s*/i, '').replace(/\s*MXN$/i, '');
+    if (!/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(text)) throw new Error(`${label}: número inválido “${value}”`);
+    cleaned = text.replace(/,/g, '');
   }
-  const str = String(val).trim();
-  return str.replace(/\.0+$/, '');
+  if (typeof cleaned !== 'number' && typeof cleaned !== 'string') throw new Error(`${label}: valor inválido`);
+  const result = Number(cleaned);
+  if (!Number.isFinite(result) || Math.abs(result) > MAX_QUANTITY || (!negative && result < 0)) throw new Error(`${label}: valor fuera de rango`);
+  return result;
 }
-
 export function parseEleventaExcel(fileBuffer: ArrayBuffer): { products: Product[]; errors: string[] } {
-  const workbook = XLSX.read(fileBuffer, { type: 'array' });
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-
-  const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
-  if (!rawData || rawData.length < 2) {
-    return { products: [], errors: ['El archivo de Excel parece estar vacío o no contiene filas de datos.'] };
+  const workbook = XLSX.read(fileBuffer, { type: 'array', raw: true, cellText: true, sheetRows: 20022 });
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!worksheet) return { products: [], errors: ['El archivo no contiene hojas.'] };
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
+  const aliases = {
+    code: ['codigo', 'codigodebarras', 'codigobarras', 'code', 'barcode', 'clave'],
+    description: ['descripcion', 'nombre', 'articulo', 'producto', 'nombredelproducto'],
+    stock: ['existencia', 'existencias', 'stock', 'cantidad', 'hay', 'stockteoricoeleventa', 'inventario'],
+    cost: ['costo', 'costounitario', 'preciocosto', 'preciodecompra', 'compra'],
+    price: ['precio', 'precioventa', 'preciodeventa', 'venta'],
+    department: ['departamento', 'categoria', 'familia'],
+    unit: ['tipo', 'tipodeventa', 'unidad'],
+  };
+  let header = -1;
+  let columns: Record<keyof typeof aliases, number> = { code: -1, description: -1, stock: -1, cost: -1, price: -1, department: -1, unit: -1 };
+  for (let index = 0; index < Math.min(rows.length, 20); index++) {
+    const normalized = rows[index].map(normalize);
+    const found = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, normalized.findIndex(h => names.includes(h))])) as typeof columns;
+    if (found.code !== -1 && found.description !== -1) { header = index; columns = found; break; }
   }
-
-  let headerRowIndex = 0;
-  let codeColIdx = -1;
-  let descColIdx = -1;
-  let stockColIdx = -1;
-  let costColIdx = -1;
-  let priceColIdx = -1;
-  let deptColIdx = -1;
-
-  for (let r = 0; r < Math.min(5, rawData.length); r++) {
-    const row = rawData[r];
-    if (!Array.isArray(row)) continue;
-
-    const normalizedRow = row.map(cell => normalizeHeader(String(cell || '')));
-
-    const foundCode = normalizedRow.findIndex(h => 
-      h.includes('codigo') || h === 'code' || h === 'barcode' || h === 'clave'
-    );
-    const foundDesc = normalizedRow.findIndex(h => 
-      h.includes('descrip') || h.includes('nombre') || h.includes('articulo') || h.includes('producto')
-    );
-
-    if (foundCode !== -1 && foundDesc !== -1) {
-      headerRowIndex = r;
-      codeColIdx = foundCode;
-      descColIdx = foundDesc;
-      stockColIdx = normalizedRow.findIndex(h => 
-        h.includes('existencia') || h.includes('stock') || h.includes('cantidad') || h === 'hay'
-      );
-      costColIdx = normalizedRow.findIndex(h => 
-        h.includes('costo') || h.includes('compra')
-      );
-      priceColIdx = normalizedRow.findIndex(h => 
-        h.includes('precio') || h.includes('venta')
-      );
-      deptColIdx = normalizedRow.findIndex(h => 
-        h.includes('departamento') || h.includes('categoria') || h.includes('familia')
-      );
-      break;
-    }
+  if (header < 0 || columns.stock < 0) return { products: [], errors: ['Se requieren columnas Código, Descripción y Existencia. Revisa el archivo exportado desde eleventa.'] };
+  if (rows.length - header - 1 > 20000) return { products: [], errors: ['El catálogo supera el límite de 20,000 filas. Divide el archivo.'] };
+  const products: Product[] = [], errors: string[] = [];
+  const seen = new Set<string>();
+  for (let index = header + 1; index < rows.length; index++) {
+    const row = rows[index];
+    if (row.every(value => value === '' || value == null)) continue;
+    try {
+      const rawCode = row[columns.code];
+      if (typeof rawCode === 'number' && (!Number.isSafeInteger(rawCode) || rawCode < 0)) throw new Error('el código numérico perdió precisión; guárdalo como texto');
+      const cell = worksheet[XLSX.utils.encode_cell({ r: index, c: columns.code })];
+      const code = typeof rawCode === 'number' && cell?.w && /^0+\d+$/.test(cell.w) ? cell.w : String(rawCode ?? '').trim();
+      if (!code || code.length > 128) throw new Error('falta un código válido (máximo 128 caracteres)');
+      if (seen.has(code)) throw new Error(`código duplicado: ${code}`);
+      seen.add(code);
+      const description = String(row[columns.description] ?? '').trim();
+      if (!description) throw new Error(`falta la descripción de ${code}`);
+      products.push({ code, description, theoreticalStock: numeric(row[columns.stock], 'Existencia', true), physicalStock: 0,
+        cost: numeric(row[columns.cost], 'Costo'), price: numeric(row[columns.price], 'Precio de venta'),
+        department: String(row[columns.department] ?? '').trim() || 'General',
+        unitType: normalize(row[columns.unit]) === 'granel' ? 'granel' : 'unidad', counted: false });
+    } catch (error) { errors.push(`Fila ${index + 1}: ${error instanceof Error ? error.message : 'datos inválidos'}.`); }
+    if (errors.length >= 20) { errors.push('Corrige estas filas y vuelve a importar para revisar el resto.'); break; }
   }
-
-  if (codeColIdx === -1 || descColIdx === -1) {
-    return {
-      products: [],
-      errors: [
-        'No se encontraron las columnas requeridas ("Código" y "Descripción"). Asegúrate de exportar desde F3 Productos o F4 Inventario en eleventa.'
-      ]
-    };
-  }
-
-  const products: Product[] = [];
-  const errors: string[] = [];
-
-  for (let r = headerRowIndex + 1; r < rawData.length; r++) {
-    const row = rawData[r];
-    if (!Array.isArray(row) || row.length === 0) continue;
-
-    const rawCode = row[codeColIdx];
-    const code = sanitizeBarcode(rawCode);
-    const description = String(row[descColIdx] || '').trim();
-
-    if (!code && !description) continue;
-
-    const rawStock = stockColIdx !== -1 ? row[stockColIdx] : 0;
-    const theoreticalStock = Number(rawStock) || 0;
-
-    const rawCost = costColIdx !== -1 ? row[costColIdx] : 0;
-    const cost = Number(rawCost) || 0;
-
-    const rawPrice = priceColIdx !== -1 ? row[priceColIdx] : 0;
-    const price = Number(rawPrice) || 0;
-
-    const department = deptColIdx !== -1 ? String(row[deptColIdx] || 'General').trim() : 'General';
-
-    products.push({
-      code: code || `SINC-${r}`,
-      description: description || 'Sin Descripción',
-      cost,
-      price,
-      department: department || 'General',
-      theoreticalStock,
-      physicalStock: 0,
-      unitType: 'unidad',
-    });
-  }
-
-  return { products, errors };
+  if (!products.length && !errors.length) errors.push('El archivo no contiene productos.');
+  // Reject the whole import to avoid replacing a catalog with a silently incomplete subset.
+  return { products: errors.length ? [] : products, errors };
 }
 
 export function getDemoEleventaProducts(): Product[] {

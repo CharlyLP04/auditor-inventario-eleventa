@@ -9,7 +9,8 @@ import { execFile } from 'node:child_process';
 import { terminalQr } from './terminal-qr.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
-const port = 5173;
+const port = Number(process.env.AUDITOR_PORT || 5173);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Puerto inválido');
 if (!existsSync(resolve(root, 'index.html'))) {
   console.error('Falta la aplicación compilada. Abre Iniciar-Auditor.bat.');
   process.exit(1);
@@ -43,6 +44,8 @@ const handler = (request, response) => {
     response.end(request.method === 'HEAD' ? undefined : body);
   } catch { response.writeHead(400); response.end('Solicitud inválida'); }
 };
+export { handler };
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 // Optional locally supplied certificates; no automatic changes to system trust.
 const certPath = process.env.AUDITOR_CERT_FILE;
 const keyPath = process.env.AUDITOR_KEY_FILE;
@@ -54,16 +57,20 @@ server.on('error', error => {
   console.error(error.code === 'EADDRINUSE' ? 'El puerto 5173 está ocupado. Cierra el Auditor anterior u otra aplicación que lo use.' : error.message);
   process.exitCode = 1;
 });
-server.listen(port, '0.0.0.0', () => {
+server.listen(port, process.env.AUDITOR_HOST || '0.0.0.0', () => {
   const localUrl = `${scheme}://localhost:${port}`;
   console.log(`\nAuditor local: ${localUrl}\nMantén esta ventana abierta. Ctrl+C para detener.\n`);
   const addresses = new Set(Object.values(networkInterfaces()).flat().filter(entry => entry && !entry.internal && entry.family === 'IPv4').map(entry => entry.address));
   for (const address of addresses) {
     const url = `${scheme}://${address}:${port}`;
     console.log(`Celular en la misma red Wi-Fi: ${url}`);
-    console.log(terminalQr(url));
+    if (process.env.AUDITOR_NO_QR !== '1') console.log(terminalQr(url));
   }
   if (!secure) console.log('En el celular, HTTP permite ingreso manual; cámara y PWA requieren HTTPS con certificado confiable.');
   console.log('Cada navegador guarda su propio conteo. No hay sincronización entre PC y celular.');
-  if (process.platform === 'win32') execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Start-Process '${localUrl}'`], { windowsHide: true }, error => { if (error) console.log(`Abre ${localUrl} en tu navegador.`); });
+  try {
+  if (process.platform === 'win32' && process.env.AUDITOR_NO_OPEN !== '1') execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Start-Process '${localUrl}'`], { windowsHide: true }, error => { if (error) console.log(`Abre ${localUrl} en tu navegador.`); });
+  } catch { console.log(`Abre ${localUrl} en tu navegador.`); }
 });
+
+}

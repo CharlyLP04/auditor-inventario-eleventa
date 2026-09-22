@@ -1,9 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, Printer, CheckCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { Product, AuditStats } from '../types';
 import { exportAuditToEleventaExcel } from '../services/eleventaExporter';
 import { soundService } from '../services/audioService';
+
+import { isCounted, productStatus, roundQuantity } from '../services/auditState';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   products,
   stats,
 }) => {
+  const [exportError, setExportError] = useState('');
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -26,6 +29,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   }, [isOpen]);
 
   const handleExportExcel = () => {
+    try { exportAuditToEleventaExcel(products, stats); setExportError(''); }
+    catch { setExportError('No se pudo generar el Excel. Intenta de nuevo o descarga un respaldo JSON.'); return; }
     soundService.playSuccessBeep();
     confetti({
       particleCount: 80,
@@ -33,7 +38,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       origin: { y: 0.7 },
       disableForReducedMotion: true,
     });
-    exportAuditToEleventaExcel(products, stats);
   };
 
   const handlePrint = () => {
@@ -42,7 +46,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   return (
     <dialog ref={dialogRef} aria-labelledby="export-title" onCancel={(event) => { event.preventDefault(); onClose(); }} className="export-dialog fixed inset-0 z-50 m-auto max-h-[90dvh] overflow-y-auto rounded-2xl border-0 bg-transparent p-4 text-slate-100">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5">
+      <div className="export-screen bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div id="export-title" className="flex items-center gap-2 text-white font-bold text-lg">
             <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
@@ -76,7 +80,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
         </div>
 
-        <p className="text-sm text-amber-300">El ajuste incluye solo productos contados; confirma una cantidad de 0 para registrar un faltante total.</p>
+        <p className="text-sm text-amber-300">El ajuste incluye solo productos contados y registrados. Los nuevos aparecen en el reporte; confirma una cantidad de 0 para registrar un faltante total.</p>
+        {exportError && <p role="alert" className="text-red-300">{exportError}</p>}
         <div className="flex flex-col gap-3">
           <button
             disabled={stats.auditedCount === 0}
@@ -102,16 +107,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             ¿Cómo aplicar el ajuste en eleventa?
           </div>
           <p className="text-slate-300">
-            1. Abre el archivo descargado en tu computadora con eleventa.
+            1. Abre el Excel descargado y revisa las cantidades y diferencias.
           </p>
           <p className="text-slate-300">
-            2. En eleventa ve a <strong className="text-white">F3 Productos &gt; Importar</strong> (o <strong className="text-white">F4 Inventario &gt; Ajustes</strong>).
+            2. En tu versión de eleventa, identifica la opción para importar o ajustar inventario y revisa la correspondencia de columnas.
           </p>
           <p className="text-slate-300">
-            3. Selecciona la hoja <strong className="text-white">Ajuste_Inventario_eleventa</strong> y confirma.
+            3. Usa la hoja <strong className="text-white">Ajuste_Inventario_eleventa</strong> después de revisar los datos. Este programa no aplica cambios automáticamente en eleventa.
           </p>
         </div>
       </div>
+      <section className="print-report"><h1>Auditoría de inventario eleventa</h1><p>{new Date().toLocaleString('es-MX')} · {stats.auditedCount} de {stats.totalCatalog} productos contados</p><p>Merma: ${stats.missingCostValue.toFixed(2)} · Sobrante: ${stats.surplusCostValue.toFixed(2)}</p>
+        <table><thead><tr><th>Código</th><th>Producto</th><th>Teórico</th><th>Físico</th><th>Diferencia</th><th>Estado</th></tr></thead><tbody>{products.map(p => <tr key={p.code}><td>{p.code}</td><td>{p.description}</td><td>{p.theoreticalStock}</td><td>{isCounted(p) ? p.physicalStock : '—'}</td><td>{isCounted(p) && !p.isUnregistered ? roundQuantity(p.physicalStock - p.theoreticalStock) : '—'}</td><td>{{ missing: 'Faltante', surplus: 'Sobrante', match: 'Cuadrado', not_counted: 'Sin contar', unregistered: 'No registrado' }[productStatus(p)]}</td></tr>)}</tbody></table>
+      </section>
     </dialog>
   );
 };

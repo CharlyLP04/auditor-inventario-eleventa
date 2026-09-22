@@ -13,7 +13,8 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const saved = await cache.match(event.request.mode === 'navigate' ? '/index.html' : event.request);
+    const isAppNavigation = event.request.mode === 'navigate' && ['/', '/index.html'].includes(url.pathname);
+    const saved = await cache.match(isAppNavigation ? '/index.html' : event.request);
     if (saved) return saved;
     return fetch(event.request);
   })());

@@ -1,6 +1,6 @@
 # Auditor local
 
-Abre `Iniciar-Auditor.bat`. Requiere Node.js 22.12 o posterior. Si faltan dependencias, el lanzador las instala desde npm; después compila el código y abre el navegador cuando el servidor ya está escuchando. No publica ni envía el catálogo a servidores externos. Mantén abierta la terminal; Ctrl+C detiene el servidor.
+Abre `Iniciar-Auditor.bat`. Requiere Node.js 22.18 o posterior. Si faltan dependencias, el lanzador las instala desde npm; después compila el código y abre el navegador cuando el servidor ya está escuchando. No publica ni envía el catálogo a servidores externos. Mantén abierta la terminal; Ctrl+C detiene el servidor.
 
 Los QR corresponden a las direcciones IPv4 de esta PC. Escanea la dirección de la red Wi-Fi compartida con el teléfono. VPN y adaptadores virtuales pueden mostrar direcciones adicionales. Si Windows solicita acceso de red, permite la red privada que utilizas. No abras el puerto en tu router.
 
@@ -16,6 +16,8 @@ El service worker se registra solo en producción. El lanzador sirve los recurso
 
 Cada navegador y dirección guardan datos independientes: no hay sincronización entre PC y celular. Cambiar de HTTP a HTTPS o de IP abre otro almacenamiento. Exporta antes de cambiar de dirección, borrar datos del navegador o reemplazar el catálogo.
 
-Los productos pendientes se excluyen de la hoja de ajuste. Edita una cantidad y confirma `0` para registrar un faltante total. El reporte de discrepancias conserva las filas pendientes con estado `SIN CONTAR`; sus diferencias son provisionales. Las columnas del Excel mantienen sus nombres.
+Los productos pendientes se excluyen de la hoja de ajuste. Edita una cantidad y confirma `0` para registrar un faltante total. El reporte de discrepancias conserva las filas pendientes con estado `SIN CONTAR`; sus cantidades físicas y diferencias quedan en blanco hasta confirmar un conteo. Las columnas del Excel mantienen sus nombres.
 
-Los cambios de esta entrega no se ejecutaron ni se probaron, por solicitud del usuario.
+La auditoría posterior incluye compilación, análisis de código, pruebas automatizadas y revisión en navegador. Consulta README.md para reproducirlas.
+
+El botón Respaldo descarga un JSON que puede restaurarse desde Cargar archivo. Los productos no registrados se incluyen en el reporte, pero se excluyen del ajuste para no exportar costos o precios desconocidos como cero.

@@ -12,7 +12,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats }) => {
     : 0;
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-xl mx-auto">
+    <div className="summary-panel flex flex-col gap-4 w-full max-w-xl mx-auto">
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg">
         <div className="flex items-center justify-between text-xs mb-2">
           <span className="font-semibold text-slate-300 flex items-center gap-1.5">
@@ -33,7 +33,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
+      <div className="summary-kpis grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
         <div className="bg-red-950/25 border border-red-900/40 rounded-2xl p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between text-red-400">
             <span className="text-xs font-semibold uppercase tracking-wider">Faltantes (Merma)</span>

@@ -80,14 +80,17 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
         fps: 15,
         qrbox: (width, height) => ({ width: Math.max(1, Math.min(280, Math.floor(width * .8))), height: Math.max(1, Math.min(160, Math.floor(height * .6))) }),
         aspectRatio: 1,
-      }, handleDetectedCode, () => {});
+      }, handleDetectedCode, () => {
+        if (Date.now() - lastScannedTimeRef.current > 800) lastScannedCodeRef.current = '';
+      });
       if (!mounted.current) {
         await scanner.stop();
         scanner.clear();
         return;
       }
+      lastScannedCodeRef.current = '';
       setIsScanning(true);
-      setHasTorch(scanner.getRunningTrackCameraCapabilities().torchFeature().isSupported());
+      try { setHasTorch(scanner.getRunningTrackCameraCapabilities().torchFeature().isSupported()); } catch { setHasTorch(false); }
     } catch {
       if (mounted.current) {
         setIsScanning(Boolean(html5QrCodeRef.current?.isScanning));
@@ -132,7 +135,8 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
     if (!trimmed) return;
 
     const now = Date.now();
-    if (trimmed === lastScannedCodeRef.current && now - lastScannedTimeRef.current < 1200) {
+    if (trimmed === lastScannedCodeRef.current) {
+      lastScannedTimeRef.current = now;
       return;
     }
 
@@ -171,7 +175,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
             <div>
               <h3 className="text-lg font-semibold text-white">Escáner de Códigos de Barra</h3>
               <p className="text-sm text-slate-400 max-w-xs mt-1">
-                Apunta la cámara del celular al código del producto (EAN-13, UPC, Code 128)
+                Apunta al código (EAN-13, UPC, Code 128). Retíralo del visor antes de contar otra pieza del mismo producto.
               </p>
             </div>
             <button
@@ -303,7 +307,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
             : 'bg-emerald-950/30 border-emerald-500/40'
         }`}>
           <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0 break-words">
               <span className="text-xs font-mono text-slate-400">{lastScannedInfo.code}</span>
               <h4 className="font-semibold text-white text-base leading-tight mt-0.5">
                 {lastScannedInfo.description}
@@ -334,6 +338,9 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
           type="text"
           aria-label="Código del producto"
           autoComplete="off"
+          name="barcode"
+          spellCheck={false}
+          maxLength={128}
           placeholder="Digitar código o usar pistola USB / Bluetooth..."
           value={manualCode}
           onChange={(e) => setManualCode(e.target.value)}

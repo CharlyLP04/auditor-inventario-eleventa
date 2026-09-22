@@ -1,134 +1,55 @@
-import React, { useRef, useState } from 'react';
-import { Upload, FileSpreadsheet, Sparkles, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
-import { parseEleventaExcel, getDemoEleventaProducts } from '../services/eleventaParser';
+import { useEffect, useRef, useState } from 'react';
 import type { Product } from '../types';
-
-interface ExcelUploaderProps {
-  onProductsLoaded: (products: Product[]) => void;
-  currentCount: number;
-}
-
-export const ExcelUploader: React.FC<ExcelUploaderProps> = ({ onProductsLoaded, currentCount }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (currentCount > 0 && !window.confirm('¿Reemplazar el catálogo y los conteos actuales? Exporta primero si deseas conservarlos.')) { e.target.value = ''; return; }
-    setLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
+import { validateProducts } from '../services/auditState';
+export function ExcelUploader({ onProductsLoaded, currentCount }: { onProductsLoaded: (products: Product[]) => void; currentCount: number }) {
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+  const workerRef = useRef<Worker | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; cancelRef.current?.(); workerRef.current?.terminate(); }; }, []);
+  const load = async (file: File) => {
+    setErrors([]);
+    if (file.size > 10 * 1024 * 1024) { setErrors(['El archivo supera 10 MB. Divide el catálogo antes de cargarlo.']); return; }
+    setBusy(true);
     try {
-      const buffer = await file.arrayBuffer();
-      const { products, errors } = parseEleventaExcel(buffer);
-
-      if (errors.length > 0 && products.length === 0) {
-        setErrorMsg(errors.join(' '));
+      let products: Product[];
+      if (/\.json$/i.test(file.name)) {
+        const saved: unknown = JSON.parse(await file.text());
+        if (!validateProducts(saved) || !saved.length) throw new Error('El respaldo no contiene un inventario válido.');
+        products = saved;
       } else {
-        onProductsLoaded(products);
-        setSuccessMsg(`¡Se cargaron exitosamente ${products.length} productos desde ${file.name}!`);
+        const buffer = await file.arrayBuffer();
+        if (!mounted.current) return;
+        const result = await new Promise<{ products: Product[]; errors: string[] }>((resolve, reject) => {
+          const worker = new Worker(new URL('../services/importWorker.ts', import.meta.url), { type: 'module' });
+          workerRef.current = worker;
+          const cleanup = () => { clearTimeout(timeout); worker.terminate(); workerRef.current = null; cancelRef.current = null; };
+          const timeout = setTimeout(() => { cleanup(); reject(new Error('La lectura tardó más de 30 segundos. Divide el archivo e intenta de nuevo.')); }, 30000);
+          cancelRef.current = () => { cleanup(); reject(new Error('Lectura cancelada.')); };
+          worker.onmessage = event => { cleanup(); resolve(event.data); };
+          worker.onerror = () => { cleanup(); reject(new Error('No se pudo leer el archivo. Revisa su formato.')); };
+          worker.postMessage(buffer, [buffer]);
+        });
+        if (result.errors.length) { if (mounted.current) setErrors(result.errors); return; }
+        products = result.products;
       }
-    } catch (err) {
-      console.error(err);
-      setErrorMsg('Error al leer el archivo. Asegúrate de que sea un archivo válido de Excel (.xlsx, .xls) o CSV.');
-    } finally {
-      setLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+      if (!mounted.current) return;
+      if (currentCount && !window.confirm('¿Reemplazar el catálogo y los conteos actuales? Descarga un respaldo antes si necesitas conservarlos.')) return;
+      onProductsLoaded(products);
+    } catch (error) { if (mounted.current) setErrors([error instanceof Error ? error.message : 'Archivo inválido.']); }
+    finally { if (mounted.current) setBusy(false); }
   };
-
-  const loadDemo = () => {
-    if (currentCount > 0 && !window.confirm('¿Reemplazar el catálogo y los conteos con la demostración?')) return;
-    setErrorMsg(null);
-    const demo = getDemoEleventaProducts();
-    onProductsLoaded(demo);
-    setSuccessMsg(`Catálogo demo cargado con ${demo.length} productos comunes de prueba.`);
-  };
-
-  return (
-    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col gap-5 max-w-xl mx-auto shadow-xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-            Cargar Inventario de eleventa
-          </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Exporta tus productos desde tu punto de venta eleventa y súbelos aquí para iniciar la auditoría.
-          </p>
-        </div>
-        {currentCount > 0 && (
-          <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-semibold shrink-0">
-            {currentCount} productos
-          </span>
-        )}
-      </div>
-
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Seleccionar archivo de inventario"
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
-        onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 bg-slate-950/40 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx, .xls, .csv"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        <div className="w-14 h-14 rounded-full bg-slate-800 group-hover:bg-emerald-500/20 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center transition-colors mb-3">
-          <Upload className="w-7 h-7" />
-        </div>
-        <p className="text-sm font-semibold text-slate-200">
-          {loading ? 'Procesando archivo...' : 'Haz clic para seleccionar el Excel de eleventa'}
-        </p>
-        <p className="text-xs text-slate-400 mt-1">
-          Archivos compatibles: .xlsx, .xls o .csv
-        </p>
-      </div>
-
-      {errorMsg && (
-        <div className="flex items-start gap-2.5 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-300 text-xs">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
-
-      {successMsg && (
-        <div className="flex items-start gap-2.5 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs">
-          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{successMsg}</span>
-        </div>
-      )}
-
-      <div className="pt-2 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 text-xs text-slate-400">
-          <HelpCircle className="w-4 h-4 text-slate-500" />
-          <span>¿No tienes el Excel a la mano?</span>
-        </div>
-        <button
-          onClick={loadDemo}
-          className="w-full sm:w-auto px-4 py-2 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-        >
-          <Sparkles className="w-4 h-4 text-indigo-400" />
-          Cargar Catálogo de Prueba (Demo)
-        </button>
-      </div>
-
-      <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 text-xs text-slate-400 space-y-1.5">
-        <strong className="text-slate-300 block font-medium">¿Cómo exportar desde eleventa?</strong>
-        <p>1. En tu computadora con eleventa, presiona <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">F3 Productos</code> o <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">F4 Inventario</code>.</p>
-        <p>2. Haz clic en el botón inferior <strong className="text-slate-300">"Exportar"</strong>.</p>
-        <p>3. Guarda el archivo Excel y cárgalo directamente aquí.</p>
-      </div>
-    </div>
-  );
-};
+  return <section className="upload-panel">
+    <h3>Tu inventario, en este dispositivo</h3><p>Importa el Excel de eleventa para comenzar, o restaura un respaldo JSON para continuar un conteo.</p>
+    <label className="upload-target"><span>{busy ? 'Leyendo archivo…' : 'Seleccionar archivo'}</span><input aria-label="Seleccionar archivo de inventario" type="file" accept=".xlsx,.xls,.csv,.json" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void load(file); }} /><small>Excel, CSV o respaldo JSON · Máximo 10 MB / 20,000 productos</small></label>
+    {busy && <p role="status">Procesando en segundo plano…</p>}
+    {!!errors.length && <div className="message warning" role="alert"><p>No se reemplazó tu inventario:</p><ul>{errors.map((error, i) => <li key={i}>{error}</li>)}</ul></div>}
+    <div className="message"><strong>Antes de importar</strong><p>El archivo debe incluir Código, Descripción y Existencia. Guarda códigos largos o con ceros iniciales como texto. Revisa las existencias exportadas desde eleventa.</p></div>
+    <button className="secondary" disabled={busy} onClick={async () => {
+      if (currentCount && !window.confirm('¿Reemplazar el conteo actual con datos de demostración?')) return;
+      const { getDemoEleventaProducts } = await import('../services/eleventaParser');
+      if (mounted.current) onProductsLoaded(getDemoEleventaProducts());
+    }}>Cargar catálogo de demostración</button>
+  </section>;
+}
