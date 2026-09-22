@@ -1,11 +1,13 @@
 import * as XLSX from 'xlsx';
 import type { Product, AuditStats } from '../types';
 
+import { isCounted } from './auditState';
+
 export function exportAuditToEleventaExcel(products: Product[], stats: AuditStats) {
   const wb = XLSX.utils.book_new();
 
   // HOJA 1: Formato listo para Importar / Ajustar en eleventa
-  const eleventaAjusteRows = products.map(p => ({
+  const eleventaAjusteRows = products.filter(isCounted).map(p => ({
     'Código': p.code,
     'Descripción': p.description,
     'Existencia': p.physicalStock,
@@ -23,11 +25,11 @@ export function exportAuditToEleventaExcel(products: Product[], stats: AuditStat
     const diff = p.physicalStock - p.theoreticalStock;
     let estado = 'CUADRADO';
     if (p.isUnregistered) estado = 'NO REGISTRADO EN ELEVENTA';
-    else if (p.physicalStock === 0 && p.theoreticalStock > 0) estado = 'SIN CONTAR / FALTANTE TOTAL';
+    else if (!isCounted(p)) estado = 'SIN CONTAR';
     else if (diff < 0) estado = 'FALTANTE (MERMA)';
     else if (diff > 0) estado = 'SOBRANTE';
 
-    const impactoDinero = diff * p.cost;
+    const impactoDinero = isCounted(p) ? diff * p.cost : 0;
 
     return {
       'Código de Barras': p.code,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Camera, ListFilter, PieChart, FileSpreadsheet, Download, RotateCcw, ShieldCheck } from 'lucide-react';
 import type { Product, AuditStats } from './types';
 import { BarcodeScanner } from './components/BarcodeScanner';
@@ -7,6 +7,9 @@ import { AuditSummary } from './components/AuditSummary';
 import { ExcelUploader } from './components/ExcelUploader';
 import { ExportModal } from './components/ExportModal';
 import { soundService } from './services/audioService';
+
+import { isCounted } from './services/auditState';
+import { InstallApp } from './components/InstallApp';
 
 const STORAGE_KEY = 'auditor_eleventa_products_v1';
 
@@ -29,13 +32,18 @@ export function App() {
     isNew: boolean;
   } | null>(null);
 
+  const productsRef = useRef(products);
+  const [storageError, setStorageError] = useState(false);
+
   const [isExportOpen, setIsExportOpen] = useState(false);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+      setStorageError(false);
     } catch (e) {
       console.warn('Error al guardar en almacenamiento local:', e);
+      setStorageError(true);
     }
   }, [products]);
 
@@ -67,14 +75,14 @@ export function App() {
         unregisteredCount++;
       }
 
-      if (p.physicalStock > 0) {
+      if (isCounted(p)) {
         auditedCount++;
       } else if (!p.isUnregistered) {
         notCountedCount++;
       }
 
       const diff = p.physicalStock - p.theoreticalStock;
-      if (p.physicalStock > 0) {
+      if (isCounted(p)) {
         if (diff === 0) {
           matchCount++;
         } else if (diff < 0) {
@@ -108,74 +116,40 @@ export function App() {
   }, [products]);
 
   const handleScan = (barcode: string, quantityToAdd = 1) => {
-    const cleanCode = barcode.trim();
-    if (!cleanCode) return;
-
-    setProducts((prev) => {
-      const index = prev.findIndex((p) => p.code === cleanCode);
-
-      if (index !== -1) {
-        const existing = prev[index];
-        const newQty = existing.physicalStock + quantityToAdd;
-        soundService.playScanBeep();
-
-        setLastScannedInfo({
-          code: existing.code,
-          description: existing.description,
-          quantity: newQty,
-          theoretical: existing.theoreticalStock,
-          isNew: false,
-        });
-
-        const updated = [...prev];
-        updated[index] = {
-          ...existing,
-          physicalStock: newQty,
-          lastScannedAt: new Date().toISOString(),
-        };
-        return updated;
-      } else {
-        soundService.playWarningBeep();
-
-        const newProduct: Product = {
-          code: cleanCode,
-          description: `Producto no registrado (${cleanCode})`,
-          cost: 0,
-          price: 0,
-          department: 'Sin Clasificar',
-          theoreticalStock: 0,
-          physicalStock: quantityToAdd,
-          isUnregistered: true,
-          lastScannedAt: new Date().toISOString(),
-        };
-
-        setLastScannedInfo({
-          code: cleanCode,
-          description: newProduct.description,
-          quantity: quantityToAdd,
-          theoretical: 0,
-          isNew: true,
-        });
-
-        return [newProduct, ...prev];
-      }
-    });
+    const code = barcode.trim();
+    if (!code || !Number.isFinite(quantityToAdd) || quantityToAdd <= 0) return;
+    const previous = productsRef.current;
+    const existing = previous.find(p => p.code === code);
+    const product: Product = existing
+      ? { ...existing, physicalStock: existing.physicalStock + quantityToAdd, counted: true, lastScannedAt: new Date().toISOString() }
+      : { code, description: `Producto no registrado (${code})`, cost: 0, price: 0, department: 'Sin Clasificar', theoreticalStock: 0, physicalStock: quantityToAdd, isUnregistered: true, counted: true, lastScannedAt: new Date().toISOString() };
+    const next = existing ? previous.map(p => p.code === code ? product : p) : [product, ...previous];
+    productsRef.current = next;
+    setProducts(next);
+    setLastScannedInfo({ code, description: product.description, quantity: product.physicalStock, theoretical: product.theoreticalStock, isNew: Boolean(product.isUnregistered) });
+    if (product.isUnregistered || product.physicalStock !== product.theoreticalStock) soundService.playWarningBeep();
+    else soundService.playScanBeep();
   };
 
   const handleUpdateQuantity = (code: string, newQuantity: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.code === code ? { ...p, physicalStock: newQuantity } : p))
-    );
+    if (!Number.isFinite(newQuantity) || newQuantity < 0) return;
+    const next = productsRef.current.map(p => p.code === code ? { ...p, physicalStock: newQuantity, counted: true } : p);
+    productsRef.current = next;
+    setProducts(next);
   };
 
   const handleProductsLoaded = (newProducts: Product[]) => {
+    productsRef.current = newProducts;
     setProducts(newProducts);
+    setLastScannedInfo(null);
     setActiveTab('scanner');
   };
 
   const handleResetAudit = () => {
     if (window.confirm('¿Seguro que deseas reiniciar los conteos físicos a cero? El catálogo se mantendrá.')) {
-      setProducts((prev) => prev.map((p) => ({ ...p, physicalStock: 0 })));
+      const reset = productsRef.current.map((p) => ({ ...p, physicalStock: 0, counted: false, lastScannedAt: undefined }));
+      productsRef.current = reset;
+      setProducts(reset);
       setLastScannedInfo(null);
     }
   };
@@ -212,6 +186,7 @@ export function App() {
                 onClick={handleResetAudit}
                 className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                 title="Reiniciar conteo físico"
+                aria-label="Reiniciar conteo físico"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -220,7 +195,9 @@ export function App() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 max-w-xl mx-auto w-full pb-24">
+      <main id="contenido" className="flex-1 px-4 py-4 max-w-xl mx-auto w-full pb-24">
+        <InstallApp />
+        {storageError && <p role="alert" className="mb-4 text-amber-300">No se pudo guardar el conteo en este navegador. Exporta el Excel antes de cerrar.</p>}
         {activeTab === 'scanner' && (
           <div className="flex flex-col gap-4">
             {products.length === 0 ? (
@@ -262,10 +239,11 @@ export function App() {
         )}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 py-2 px-4 shadow-2xl">
+      <nav aria-label="Navegación principal" className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 py-2 px-4 shadow-2xl">
         <div className="max-w-xl mx-auto grid grid-cols-4 gap-1">
           <button
             onClick={() => setActiveTab('scanner')}
+            aria-current={activeTab === 'scanner' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'scanner'
                 ? 'text-emerald-400 font-bold bg-emerald-500/10'
@@ -278,6 +256,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('list')}
+            aria-current={activeTab === 'list' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all cursor-pointer relative ${
               activeTab === 'list'
                 ? 'text-emerald-400 font-bold bg-emerald-500/10'
@@ -293,6 +272,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('stats')}
+            aria-current={activeTab === 'stats' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'stats'
                 ? 'text-emerald-400 font-bold bg-emerald-500/10'
@@ -305,6 +285,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('upload')}
+            aria-current={activeTab === 'upload' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'upload'
                 ? 'text-emerald-400 font-bold bg-emerald-500/10'

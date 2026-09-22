@@ -9,6 +9,7 @@ export interface Product {
   minStock?: number;
   unitType?: 'unidad' | 'granel';
   isUnregistered?: boolean; // Producto escaneado que no existía en el catálogo de eleventa
+  counted?: boolean;
   lastScannedAt?: string;
 }
 

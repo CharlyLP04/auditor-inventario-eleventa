@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Download, FileSpreadsheet, Printer, CheckCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { Product, AuditStats } from '../types';
@@ -18,7 +18,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   products,
   stats,
 }) => {
-  if (!isOpen) return null;
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (isOpen && dialog && !dialog.open) dialog.showModal();
+    if (!isOpen && dialog?.open) dialog.close();
+  }, [isOpen]);
 
   const handleExportExcel = () => {
     soundService.playSuccessBeep();
@@ -26,6 +31,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       particleCount: 80,
       spread: 60,
       origin: { y: 0.7 },
+      disableForReducedMotion: true,
     });
     exportAuditToEleventaExcel(products, stats);
   };
@@ -35,14 +41,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+    <dialog ref={dialogRef} aria-labelledby="export-title" onCancel={(event) => { event.preventDefault(); onClose(); }} className="export-dialog fixed inset-0 z-50 m-auto max-h-[90dvh] overflow-y-auto rounded-2xl border-0 bg-transparent p-4 text-slate-100">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2 text-white font-bold text-lg">
+          <div id="export-title" className="flex items-center gap-2 text-white font-bold text-lg">
             <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
             Finalizar y Exportar Auditoría
           </div>
           <button
+            aria-label="Cerrar exportación"
             onClick={onClose}
             className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
           >
@@ -69,8 +76,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
         </div>
 
+        <p className="text-sm text-amber-300">El ajuste incluye solo productos contados; confirma una cantidad de 0 para registrar un faltante total.</p>
         <div className="flex flex-col gap-3">
           <button
+            disabled={stats.auditedCount === 0}
             onClick={handleExportExcel}
             className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
@@ -103,6 +112,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </p>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

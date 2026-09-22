@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { Search, Plus, Minus, CheckCircle, PackageSearch } from 'lucide-react';
 import type { Product, ProductFilter } from '../types';
 
+import { isCounted } from '../services/auditState';
+
 interface InventoryTableProps {
   products: Product[];
   onUpdateQuantity: (code: string, newQuantity: number) => void;
@@ -31,13 +33,13 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
       let matchesStatus = true;
 
       if (activeFilter === 'missing') {
-        matchesStatus = diff < 0 && p.physicalStock > 0;
+        matchesStatus = diff < 0 && isCounted(p);
       } else if (activeFilter === 'surplus') {
-        matchesStatus = diff > 0;
+        matchesStatus = isCounted(p) && diff > 0;
       } else if (activeFilter === 'match') {
-        matchesStatus = diff === 0 && p.physicalStock > 0;
+        matchesStatus = diff === 0 && isCounted(p);
       } else if (activeFilter === 'not_counted') {
-        matchesStatus = p.physicalStock === 0 && !p.isUnregistered;
+        matchesStatus = !isCounted(p) && !p.isUnregistered;
       } else if (activeFilter === 'unregistered') {
         matchesStatus = !!p.isUnregistered;
       }
@@ -52,8 +54,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
   };
 
   const handleSaveEdit = (code: string) => {
-    const val = parseInt(tempQty, 10);
-    if (!isNaN(val) && val >= 0) {
+    const val = tempQty.trim() ? Number(tempQty) : NaN;
+    if (Number.isFinite(val) && val >= 0) {
       onUpdateQuantity(code, val);
     }
     setEditingCode(null);
@@ -67,6 +69,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
           <input
             type="text"
             placeholder="Buscar por producto o código..."
+            aria-label="Buscar producto o código"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-500 text-xs rounded-xl py-2.5 pl-9 pr-3 outline-none focus:border-emerald-500"
@@ -76,6 +79,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
         {departments.length > 2 && (
           <div className="relative">
             <select
+              aria-label="Filtrar por departamento"
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl py-2.5 px-3 outline-none focus:border-emerald-500"
@@ -91,14 +95,15 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
       <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
         {[
           { id: 'all', label: 'Todos' },
-          { id: 'missing', label: 'Faltantes' },
-          { id: 'surplus', label: 'Sobrantes' },
-          { id: 'match', label: 'Cuadrados' },
+          { id: 'missing', label: '↓ Faltantes' },
+          { id: 'surplus', label: '↑ Sobrantes' },
+          { id: 'match', label: '✓ Cuadrados' },
           { id: 'not_counted', label: 'Sin Contar' },
           { id: 'unregistered', label: 'Nuevos' },
         ].map((tab) => (
           <button
             key={tab.id}
+            aria-pressed={activeFilter === tab.id}
             onClick={() => setActiveFilter(tab.id as ProductFilter)}
             className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
               activeFilter === tab.id
@@ -120,15 +125,15 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
         ) : (
           filteredProducts.map((product) => {
             const diff = product.physicalStock - product.theoreticalStock;
-            const hasDiscrepancy = product.physicalStock > 0 && diff !== 0;
-            const isMatch = product.physicalStock > 0 && diff === 0;
-            const isNotCounted = product.physicalStock === 0 && !product.isUnregistered;
+            const hasDiscrepancy = isCounted(product) && diff !== 0;
+            const isMatch = isCounted(product) && diff === 0;
+            const isNotCounted = !isCounted(product) && !product.isUnregistered;
 
             return (
               <div
                 key={product.code}
                 className={`p-3.5 rounded-xl border transition-all ${
-                  diff < 0 && product.physicalStock > 0
+                  diff < 0 && isCounted(product)
                     ? 'bg-red-950/15 border-red-900/40'
                     : diff > 0
                     ? 'bg-blue-950/15 border-blue-900/40'
@@ -147,11 +152,11 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
                         </span>
                       )}
                     </div>
-                    <h4 className="text-sm font-semibold text-slate-100 truncate mt-0.5">
+                    <h4 className="text-sm font-semibold text-slate-100 break-words mt-0.5">
                       {product.description}
                     </h4>
 
-                    <div className="flex items-center gap-3 mt-1.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs">
                       <span className="text-slate-400">
                         eleventa: <strong className="text-slate-200">{product.theoreticalStock}</strong>
                       </span>
@@ -167,14 +172,14 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
                   </div>
 
                   <div className="text-right shrink-0">
-                    {diff < 0 && product.physicalStock > 0 && (
+                    {diff < 0 && isCounted(product) && (
                       <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-300 text-[11px] font-bold px-2 py-0.5 rounded border border-red-500/30">
-                        {diff} pzas
+                        ↓ {diff} pzas
                       </span>
                     )}
                     {diff > 0 && (
                       <span className="inline-flex items-center gap-1 bg-blue-500/20 text-blue-300 text-[11px] font-bold px-2 py-0.5 rounded border border-blue-500/30">
-                        +{diff} pzas
+                        +↓ {diff} pzas
                       </span>
                     )}
                     {isMatch && (
@@ -189,7 +194,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
                     )}
                     {product.isUnregistered && (
                       <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/30">
-                        Nuevo
+                        ⚠ No registrado
                       </span>
                     )}
                   </div>
@@ -200,6 +205,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
 
                   <div className="flex items-center gap-2">
                     <button
+                      aria-label={`Restar una unidad de ${product.description}`}
+                      disabled={product.physicalStock <= 0}
                       onClick={() => onUpdateQuantity(product.code, Math.max(0, product.physicalStock - 1))}
                       className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 flex items-center justify-center transition-colors cursor-pointer"
                     >
@@ -209,6 +216,9 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
                     {editingCode === product.code ? (
                       <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit(product.code); }} className="flex items-center">
                         <input
+                          aria-label={`Conteo físico de ${product.description}`}
+                          min="0"
+                          step="any"
                           type="number"
                           autoFocus
                           value={tempQty}
@@ -218,16 +228,18 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({ products, onUpda
                         />
                       </form>
                     ) : (
-                      <div
+                      <button
+                        aria-label={`Editar conteo de ${product.description}: ${product.physicalStock}`}
                         onClick={() => handleStartEdit(product)}
                         className="w-14 text-center bg-slate-950/80 hover:bg-slate-900 border border-slate-700 rounded-lg py-1 text-base font-bold text-emerald-400 cursor-pointer"
                         title="Toca para editar cantidad directamente"
                       >
                         {product.physicalStock}
-                      </div>
+                      </button>
                     )}
 
                     <button
+                      aria-label={`Sumar una unidad de ${product.description}`}
                       onClick={() => onUpdateQuantity(product.code, product.physicalStock + 1)}
                       className="w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white flex items-center justify-center transition-colors cursor-pointer"
                     >

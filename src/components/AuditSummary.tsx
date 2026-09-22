@@ -21,7 +21,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats }) => {
           </span>
           <span className="font-mono font-bold text-emerald-400 text-sm">{percentage}%</span>
         </div>
-        <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+        <div role="progressbar" aria-label="Avance de auditoría" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage} className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
             style={{ width: `${percentage}%` }}
@@ -33,7 +33,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
         <div className="bg-red-950/25 border border-red-900/40 rounded-2xl p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between text-red-400">
             <span className="text-xs font-semibold uppercase tracking-wider">Faltantes (Merma)</span>
@@ -43,7 +43,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats }) => {
             <div className="text-xl font-black text-red-300">
               -${stats.missingCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <span className="text-xs text-red-400/80 font-medium">
+            <span className="text-xs text-red-300 font-medium">
               {stats.totalMissingPieces} piezas faltantes ({stats.missingCount} productos)
             </span>
           </div>
@@ -58,7 +58,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats }) => {
             <div className="text-xl font-black text-blue-300">
               +${stats.surplusCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <span className="text-xs text-blue-400/80 font-medium">
+            <span className="text-xs text-blue-300 font-medium">
               {stats.totalSurplusPieces} piezas de más ({stats.surplusCount} productos)
             </span>
           </div>

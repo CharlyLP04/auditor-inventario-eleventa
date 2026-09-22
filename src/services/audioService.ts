@@ -2,6 +2,10 @@
 class AudioService {
   private audioCtx: AudioContext | null = null;
 
+  unlock() {
+    try { this.initCtx(); } catch { /* Audio is optional. */ }
+  }
+
   private initCtx() {
     if (!this.audioCtx) {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -10,7 +14,7 @@ class AudioService {
       }
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+      void this.audioCtx.resume().catch(() => {});
     }
   }
 

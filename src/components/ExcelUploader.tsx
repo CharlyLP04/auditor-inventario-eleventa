@@ -18,6 +18,7 @@ export const ExcelUploader: React.FC<ExcelUploaderProps> = ({ onProductsLoaded, 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (currentCount > 0 && !window.confirm('¿Reemplazar el catálogo y los conteos actuales? Exporta primero si deseas conservarlos.')) { e.target.value = ''; return; }
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -42,6 +43,7 @@ export const ExcelUploader: React.FC<ExcelUploaderProps> = ({ onProductsLoaded, 
   };
 
   const loadDemo = () => {
+    if (currentCount > 0 && !window.confirm('¿Reemplazar el catálogo y los conteos con la demostración?')) return;
     setErrorMsg(null);
     const demo = getDemoEleventaProducts();
     onProductsLoaded(demo);
@@ -68,6 +70,10 @@ export const ExcelUploader: React.FC<ExcelUploaderProps> = ({ onProductsLoaded, 
       </div>
 
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Seleccionar archivo de inventario"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
         onClick={() => fileInputRef.current?.click()}
         className="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 bg-slate-950/40 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
       >

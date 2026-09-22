@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { soundService } from '../services/audioService';
 import { Camera, Flashlight, Plus, Layers, Zap, AlertCircle, Search } from 'lucide-react';
 
 interface BarcodeScannerProps {
@@ -29,112 +30,100 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
   const lastScannedTimeRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>('');
 
-  useEffect(() => {
-    Html5Qrcode.getCameras()
-      .then(devices => {
-        if (devices && devices.length > 0) {
-          setCameras(devices);
-          const backCam = devices.find(d => 
-            d.label.toLowerCase().includes('back') || 
-            d.label.toLowerCase().includes('trasera') || 
-            d.label.toLowerCase().includes('environment')
-          );
-          setSelectedCamera(backCam ? backCam.id : devices[0].id);
-        } else {
-          setErrorMessage('No se detectaron cámaras en este dispositivo.');
-        }
-      })
-      .catch(err => {
-        console.warn('Error al listar cámaras:', err);
-        setErrorMessage('Permiso de cámara no concedido o requiere HTTPS.');
-      });
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState(0);
+  const mounted = useRef(false);
+  const starting = useRef(false);
+  const currentScan = useRef({ onScan, scanMode, batchQuantity });
+  useEffect(() => { currentScan.current = { onScan, scanMode, batchQuantity }; }, [onScan, scanMode, batchQuantity]);
 
+  useEffect(() => {
+    mounted.current = true;
     return () => {
-      stopScanning();
+      mounted.current = false;
+      const scanner = html5QrCodeRef.current;
+      if (scanner?.isScanning) void scanner.stop().then(() => scanner.clear()).catch(() => {});
     };
   }, []);
 
   const startScanning = async (cameraId?: string) => {
-    const camId = cameraId || selectedCamera;
-    if (!camId) return;
-
+    if (starting.current) return;
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setErrorMessage('La cámara necesita localhost en esta PC o HTTPS con un certificado confiable en el celular. Puedes ingresar códigos manualmente o usar un lector USB/Bluetooth.');
+      return;
+    }
+    starting.current = true;
+    setBusy(true);
     setErrorMessage(null);
-
+    soundService.unlock();
     try {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        await html5QrCodeRef.current.stop();
-      }
-
-      const formatsToSupport = [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.QR_CODE,
-      ];
-
-      const html5QrCode = new Html5Qrcode('interactive-scanner-view', {
-        formatsToSupport,
+      const previous = html5QrCodeRef.current;
+      if (previous?.isScanning) await previous.stop();
+      previous?.clear();
+      if (!mounted.current) return;
+      setIsScanning(false);
+      setHasTorch(false);
+      setTorchOn(false);
+      const devices = await Html5Qrcode.getCameras();
+      if (!mounted.current) return;
+      setCameras(devices);
+      const preferred = devices.find(d => /back|trasera|environment/i.test(d.label));
+      const id = cameraId || selectedCamera || preferred?.id || devices[0]?.id;
+      if (!id) throw new Error('No hay cámaras disponibles.');
+      setSelectedCamera(id);
+      const scanner = new Html5Qrcode('interactive-scanner-view', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39],
         verbose: false,
       });
-      html5QrCodeRef.current = html5QrCode;
-
-      await html5QrCode.start(
-        camId,
-        {
-          fps: 15,
-          qrbox: { width: 280, height: 160 },
-          aspectRatio: 1.0,
-        },
-        (decodedText) => {
-          handleDetectedCode(decodedText);
-        },
-        () => {}
-      );
-
-      setIsScanning(true);
-
-      try {
-        const capabilities = html5QrCode.getRunningTrackCapabilities();
-        if (capabilities && 'torch' in capabilities) {
-          setHasTorch(true);
-        }
-      } catch {
-        setHasTorch(false);
+      html5QrCodeRef.current = scanner;
+      await scanner.start(id, {
+        fps: 15,
+        qrbox: (width, height) => ({ width: Math.max(1, Math.min(280, Math.floor(width * .8))), height: Math.max(1, Math.min(160, Math.floor(height * .6))) }),
+        aspectRatio: 1,
+      }, handleDetectedCode, () => {});
+      if (!mounted.current) {
+        await scanner.stop();
+        scanner.clear();
+        return;
       }
-    } catch (err) {
-      console.error('Error al iniciar escáner:', err);
-      setIsScanning(false);
-      setErrorMessage('No se pudo iniciar la cámara. Asegúrate de dar permisos de cámara.');
+      setIsScanning(true);
+      setHasTorch(scanner.getRunningTrackCameraCapabilities().torchFeature().isSupported());
+    } catch {
+      if (mounted.current) {
+        setIsScanning(Boolean(html5QrCodeRef.current?.isScanning));
+        setErrorMessage('No se pudo activar la cámara. Revisa los permisos y cierra otras aplicaciones que la estén usando.');
+      }
+    } finally {
+      starting.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
   const stopScanning = async () => {
-    if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-      try {
-        await html5QrCodeRef.current.stop();
-        html5QrCodeRef.current.clear();
-      } catch (err) {
-        console.error('Error al detener escáner:', err);
-      }
+    if (starting.current) return;
+    starting.current = true;
+    setBusy(true);
+    try {
+      const scanner = html5QrCodeRef.current;
+      if (scanner?.isScanning) await scanner.stop();
+      scanner?.clear();
+      if (mounted.current) { setIsScanning(false); setTorchOn(false); setHasTorch(false); }
+    } catch {
+      if (mounted.current) setErrorMessage('No se pudo detener la cámara. Intenta de nuevo.');
+    } finally {
+      starting.current = false;
+      if (mounted.current) setBusy(false);
     }
-    setIsScanning(false);
-    setTorchOn(false);
   };
 
   const toggleTorch = async () => {
-    if (!html5QrCodeRef.current || !isScanning) return;
+    const scanner = html5QrCodeRef.current;
+    if (!scanner?.isScanning) return;
     try {
-      const nextState = !torchOn;
-      await html5QrCodeRef.current.applyVideoConstraints({
-        // @ts-expect-error torch capability
-        advanced: [{ torch: nextState }]
-      });
-      setTorchOn(nextState);
-    } catch (e) {
-      console.warn('Error alternando linterna:', e);
+      await scanner.getRunningTrackCameraCapabilities().torchFeature().apply(!torchOn);
+      if (mounted.current) setTorchOn(!torchOn);
+    } catch {
+      if (mounted.current) setErrorMessage('Esta cámara no permite cambiar la linterna.');
     }
   };
 
@@ -150,21 +139,28 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
     lastScannedCodeRef.current = trimmed;
     lastScannedTimeRef.current = now;
 
-    const qty = scanMode === 'batch' ? batchQuantity : 1;
-    onScan(trimmed, qty);
+    if (!mounted.current) return;
+    const current = currentScan.current;
+    const qty = current.scanMode === 'batch' ? current.batchQuantity : 1;
+    current.onScan(trimmed, qty);
+    setFlash(value => value + 1);
   };
 
   const handleManualSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!manualCode.trim()) return;
     const qty = scanMode === 'batch' ? batchQuantity : 1;
+    soundService.unlock();
     onScan(manualCode.trim(), qty);
+    setFlash(value => value + 1);
     setManualCode('');
   };
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-xl mx-auto">
       <div className="relative bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-2xl min-h-[320px] flex flex-col items-center justify-center">
+        {isScanning && <div className="scan-reticle" aria-hidden="true" />}
+        {flash > 0 && <div key={flash} className="scan-flash" aria-hidden="true" />}
         <div id="interactive-scanner-view" className="w-full h-full min-h-[300px]" />
 
         {!isScanning && (
@@ -179,17 +175,18 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
               </p>
             </div>
             <button
+              disabled={busy}
               onClick={() => startScanning()}
               className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-medium rounded-xl shadow-lg shadow-emerald-900/30 flex items-center gap-2 transition-all cursor-pointer"
             >
               <Zap className="w-5 h-5" />
-              Activar Cámara
+              {busy ? 'Abriendo cámara…' : 'Activar cámara'}
             </button>
           </div>
         )}
 
         {isScanning && (
-          <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+          <div className="absolute bottom-3 right-3 flex items-center gap-2 z-20">
             {hasTorch && (
               <button
                 onClick={toggleTorch}
@@ -197,11 +194,14 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
                   torchOn ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/40' : 'bg-slate-900/80 text-slate-300'
                 }`}
                 title="Linterna / Flash"
+                aria-label="Linterna"
+                aria-pressed={torchOn}
               >
                 <Flashlight className="w-5 h-5" />
               </button>
             )}
             <button
+              disabled={busy}
               onClick={stopScanning}
               className="px-3 py-1.5 bg-red-600/90 hover:bg-red-500 text-white text-xs font-semibold rounded-full backdrop-blur-md"
             >
@@ -211,8 +211,10 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
         )}
 
         {isScanning && cameras.length > 1 && (
-          <div className="absolute bottom-3 left-3 right-3 z-20 flex justify-center">
+          <div className="absolute top-3 left-3 right-3 z-20 flex justify-center">
             <select
+              aria-label="Seleccionar cámara"
+              disabled={busy}
               value={selectedCamera}
               onChange={(e) => {
                 setSelectedCamera(e.target.value);
@@ -231,7 +233,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
       </div>
 
       {errorMessage && (
-        <div className="flex items-center gap-2 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-300 text-sm">
+        <div role="alert" className="flex items-center gap-2 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-300 text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span>{errorMessage}</span>
         </div>
@@ -239,6 +241,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
 
       <div className="grid grid-cols-2 gap-2 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800">
         <button
+          aria-pressed={scanMode === 'single'}
           onClick={() => setScanMode('single')}
           className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
             scanMode === 'single'
@@ -250,6 +253,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
           Modo Unidad (+1)
         </button>
         <button
+          aria-pressed={scanMode === 'batch'}
           onClick={() => setScanMode('batch')}
           className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
             scanMode === 'batch'
@@ -263,7 +267,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
       </div>
 
       {scanMode === 'batch' && (
-        <div className="flex items-center justify-between bg-indigo-950/30 border border-indigo-800/40 p-3 rounded-xl">
+        <div className="flex flex-wrap gap-3 items-center justify-between bg-indigo-950/30 border border-indigo-800/40 p-3 rounded-xl">
           <span className="text-sm text-indigo-300 font-medium">Cantidad a sumar por escaneo:</span>
           <div className="flex items-center gap-1.5">
             {[6, 12, 24].map((qty) => (
@@ -281,9 +285,11 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
             ))}
             <input
               type="number"
+              aria-label="Unidades por caja"
               min="1"
+              max="999999"
               value={batchQuantity}
-              onChange={(e) => setBatchQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={(e) => setBatchQuantity(Math.min(999999, Math.max(1, parseInt(e.target.value) || 1)))}
               className="w-14 text-center bg-slate-900 border border-indigo-500/50 rounded-md py-1 text-sm font-bold text-white focus:outline-none focus:border-indigo-400"
             />
           </div>
@@ -291,7 +297,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
       )}
 
       {lastScannedInfo && (
-        <div className={`p-4 rounded-xl border transition-all ${
+        <div role="status" aria-live="polite" aria-atomic="true" className={`p-4 rounded-xl border transition-all ${
           lastScannedInfo.isNew 
             ? 'bg-amber-950/30 border-amber-500/40' 
             : 'bg-emerald-950/30 border-emerald-500/40'
@@ -326,10 +332,12 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
       <form onSubmit={handleManualSubmit} className="relative flex items-center">
         <input
           type="text"
+          aria-label="Código del producto"
+          autoComplete="off"
           placeholder="Digitar código o usar pistola USB / Bluetooth..."
           value={manualCode}
           onChange={(e) => setManualCode(e.target.value)}
-          className="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 text-slate-100 placeholder-slate-500 text-sm rounded-xl py-3 pl-4 pr-24 outline-none transition-colors"
+          className="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 text-slate-100 placeholder-slate-500 text-sm rounded-xl py-4 pl-4 pr-28 outline-none transition-colors"
         />
         <button
           type="submit"

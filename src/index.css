@@ -1,39 +1,35 @@
 @import "tailwindcss";
-
-:root {
-  color-scheme: dark;
+@theme {
+  --color-slate-950: #080c14;
+  --color-slate-900: #0e1626;
+  --color-slate-400: #b1bed0;
+  --color-slate-500: #94a3b8;
+  --color-red-400: #ff6b6b;
+  --color-blue-400: #38bdf8;
+  --color-emerald-400: #34d399;
+  --color-emerald-600: #047857;
+  --color-emerald-500: #059669;
 }
-
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  min-height: 100%;
-  background-color: #090d16;
-  color: #f1f5f9;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-
-#root {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
-}
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-variant-numeric: tabular-nums; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #080c14; color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
+#root { min-height: 100dvh; }
+button, input:not([type=file]), select { min-height: 48px; }
+button { min-width: 48px; touch-action: manipulation; }
+button:not(:disabled) { cursor: pointer; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+:focus-visible { outline: 3px solid #7dd3fc !important; outline-offset: 3px; }
+input, select { font-size: 16px !important; }
+input { user-select: text; }
+header, nav { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+nav { padding-bottom: max(8px, env(safe-area-inset-bottom)) !important; }
+main { padding-bottom: calc(108px + env(safe-area-inset-bottom)) !important; }
+.scan-flash { position: absolute; inset: 0; pointer-events: none; background: #34d39940; animation: scan-feedback .45s ease-out both; z-index: 15; }
+.scan-reticle { position: absolute; inset: 23% 10%; border: 2px solid #a7f3d0; border-radius: 16px; pointer-events: none; }
+.scan-reticle::after { content: ''; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #34d399; box-shadow: 0 0 10px #34d399; }
+@keyframes scan-feedback { from { opacity: 1; } to { opacity: 0; } }
+@media (max-width: 380px) { header > div { flex-wrap: wrap; gap: 8px; } }
+.export-dialog::backdrop { background: #080c14cc; backdrop-filter: blur(12px); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .scan-flash { display: none; } }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #475569; border-radius: 99px; }

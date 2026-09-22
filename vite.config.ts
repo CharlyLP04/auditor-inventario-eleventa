@@ -11,5 +11,6 @@ export default defineConfig({
   server: {
     host: true, // Allow local network access (e.g. testing from mobile phone in same wifi)
     port: 5173,
+    strictPort: true,
   },
 })
