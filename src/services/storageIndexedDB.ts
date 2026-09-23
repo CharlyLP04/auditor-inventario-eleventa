@@ -67,14 +67,39 @@ export async function recoverWorkspace() {
   const current = await readWorkspace();
   return current.revision ? current : writeWorkspace(current, 0);
 }
+const DEMO_CODES = new Set([
+  '7501055365449', '7501000111459', '7501008041239', '7501020515152',
+  '7501001400279', '7501030467558', '7501055304745', '7501030491027'
+]);
+const isDemoProducts = (products: unknown) =>
+  Array.isArray(products) && products.length > 0 && products.every((p: unknown) => Boolean(p) && typeof p === 'object' && DEMO_CODES.has((p as Record<string, unknown>).code as string));
+
 async function migrateWorkspace() {
   let data = await readWorkspace();
+  const demoCompany = data.companies.find(c => c.name === 'Empresa del conteo anterior');
+  if (demoCompany) {
+    const demoAudits = data.audits.filter(a => a.companyId === demoCompany.id);
+    const hasOnlyDemo = demoAudits.every(a => !a.products.length || isDemoProducts(a.products));
+    if (hasOnlyDemo) {
+      data = {
+        ...data,
+        companies: data.companies.filter(c => c.id !== demoCompany.id),
+        audits: data.audits.filter(a => a.companyId !== demoCompany.id),
+        activeCompanyId: data.activeCompanyId === demoCompany.id ? null : data.activeCompanyId,
+        activeAuditId: demoAudits.some(a => a.id === data.activeAuditId) ? null : data.activeAuditId,
+      };
+      localStorage.removeItem(LEGACY_KEY);
+      return writeWorkspace(data, data.revision, true);
+    }
+  }
   if (data.revision !== 0) return data;
   const raw = localStorage.getItem(LEGACY_KEY);
   if (raw) {
-    const products: unknown = JSON.parse(raw);
-    if (!validateProducts(products)) throw new Error('El conteo anterior no es válido. Se conserva en localStorage; no se ha reemplazado.');
-    if (products.length) {
+    let products: unknown;
+    try { products = JSON.parse(raw); } catch { products = []; }
+    if (isDemoProducts(products)) {
+      localStorage.removeItem(LEGACY_KEY);
+    } else if (validateProducts(products) && products.length) {
       const company: Company = { id: createId(), name: 'Empresa del conteo anterior', createdAt: new Date().toISOString() };
       const today = new Date();
       const audit = newAudit(company.id, `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);

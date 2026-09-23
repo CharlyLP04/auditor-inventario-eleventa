@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Product } from '../types';
 import { validateProducts } from '../services/auditState';
-import { Sparkles, FileSpreadsheet, Upload } from 'lucide-react';
+import { FileSpreadsheet, Upload } from 'lucide-react';
 
 export function ExcelUploader({
   onProductsLoaded,
@@ -152,21 +152,6 @@ export function ExcelUploader({
           1. En tu computadora con eleventa ve a <strong>F3 Productos &gt; Exportar</strong>.<br />
           2. Sube ese archivo aquí. El sistema detecta automáticamente las columnas de Código, Descripción y Existencias.
         </p>
-      </div>
-
-      <div className="pt-4 border-t border-white/10 mt-6 flex justify-center">
-        <button
-          className="secondary px-6 py-3 rounded-full flex items-center gap-2 cursor-pointer font-bold"
-          disabled={busy}
-          onClick={async () => {
-            if (currentCount && !window.confirm('¿Reemplazar el conteo actual con datos de demostración?')) return;
-            const { getDemoEleventaProducts } = await import('../services/eleventaParser');
-            if (mounted.current) await onProductsLoaded(getDemoEleventaProducts());
-          }}
-        >
-          <Sparkles size={16} className="text-[#FF6E42]" />
-          <span>Cargar Catálogo de Prueba (Demo)</span>
-        </button>
       </div>
     </section>
   );
