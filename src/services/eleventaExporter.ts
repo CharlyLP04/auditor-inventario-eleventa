@@ -1,9 +1,10 @@
 import * as XLSX from 'xlsx';
-import type { Product, AuditStats } from '../types';
+import type { Product, AuditStats, Company, AuditRecord, AuditorProfile } from '../types';
 
 import { isCounted, roundQuantity } from './auditState';
 import { prepareDownload } from './fileDownload';
 
+interface ReportContext { company?: Company; audit?: AuditRecord; profile?: AuditorProfile; }
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function dateSuffix(now: Date) {
@@ -51,7 +52,7 @@ export function exportEleventaAdjustment(products: Product[]) {
   return prepareWorkbook(createEleventaAdjustmentWorkbook(products), `Ajuste_Inventario_eleventa_${dateSuffix(new Date())}.xlsx`);
 }
 
-export function createAuditWorkbook(products: Product[], stats: AuditStats, now = new Date()) {
+export function createAuditWorkbook(products: Product[], stats: AuditStats, now = new Date(), context: ReportContext = {}) {
   const wb = XLSX.utils.book_new();
 
   // HOJA 1: Formato listo para Importar / Ajustar en eleventa
@@ -88,6 +89,7 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
       'Diferencia (Piezas)': isCounted(p) && !p.isUnregistered ? diff : null,
       'Costo Unitario ($)': p.cost,
       'Impacto en $ (Costo)': impactoDinero,
+      'Impacto en $ (Venta)': isCounted(p) && !p.isUnregistered ? roundQuantity(diff * p.price) : null,
       'Precio Venta ($)': p.price,
       'Estado': estado,
       'Precio Mayoreo ($)': p.wholesalePrice ?? null,
@@ -102,6 +104,13 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
   const fechaStr = now.toLocaleDateString('es-MX', { dateStyle: 'full' }) + ' ' + now.toLocaleTimeString('es-MX');
 
   const resumenRows = [
+    { 'Métrica': 'Empresa', 'Valor': context.company?.name ?? '' },
+    { 'Métrica': 'Periodo', 'Valor': context.audit?.period ?? '' },
+    { 'Métrica': 'Auditor', 'Valor': context.profile?.auditorName ?? '' },
+    { 'Métrica': 'Servicio', 'Valor': context.profile?.serviceName ?? '' },
+    { 'Métrica': 'Hallazgos', 'Valor': context.audit?.notes ?? '' },
+    { 'Métrica': 'Merma a precio de venta ($)', 'Valor': stats.missingSaleValue },
+    { 'Métrica': 'Sobrante a precio de venta ($)', 'Valor': stats.surplusSaleValue },
     { 'Métrica': 'Fecha de Auditoría', 'Valor': fechaStr },
     { 'Métrica': 'Total Productos en Catálogo', 'Valor': stats.totalCatalog },
     { 'Métrica': 'Productos Auditados', 'Valor': `${stats.auditedCount} (${Math.round((stats.auditedCount / (stats.totalCatalog || 1)) * 100)}%)` },
@@ -115,7 +124,7 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
     { 'Métrica': 'Productos Cuadrados al 100%', 'Valor': stats.matchCount },
     { 'Métrica': 'Productos con Diferencias', 'Valor': stats.missingCount + stats.surplusCount },
     { 'Métrica': 'Productos No Registrados en Catálogo', 'Valor': stats.unregisteredCount },
-    { 'Métrica': 'Productos registrados con costo en cero (no aportan valoración en pesos)', 'Valor': products.filter(p => !p.isUnregistered && p.cost === 0).length },
+    { 'Métrica': 'Productos registrados con costo en cero (sin valoración al costo)', 'Valor': products.filter(p => !p.isUnregistered && p.cost === 0).length },
   ];
 
   const wsResumen = XLSX.utils.json_to_sheet(resumenRows);
@@ -123,8 +132,8 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
 
   return wb;
 }
-export function exportAuditToEleventaExcel(products: Product[], stats: AuditStats) {
+export function exportAuditToEleventaExcel(products: Product[], stats: AuditStats, context: ReportContext = {}) {
   if (!products.length) throw new Error('Carga un catálogo antes de descargar el reporte.');
   const now = new Date();
-  return prepareWorkbook(createAuditWorkbook(products, stats, now), `Auditoria_Inventario_eleventa_${dateSuffix(now)}.xlsx`);
+  return prepareWorkbook(createAuditWorkbook(products, stats, now, context), `Auditoria_Inventario_eleventa_${dateSuffix(now)}.xlsx`);
 }

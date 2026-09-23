@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, Printer, CheckCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import type { Product, AuditStats } from '../types';
+import type { Product, AuditStats, Company, AuditRecord, AuditorProfile } from '../types';
 import { exportAuditToEleventaExcel, exportEleventaAdjustment } from '../services/eleventaExporter';
 import { startDownload, releaseDownload } from '../services/fileDownload';
 import type { PreparedDownload } from '../services/fileDownload';
@@ -13,13 +13,16 @@ interface ExportModalProps {
   onClose: () => void;
   products: Product[];
   stats: AuditStats;
+  company?: Company;
+  audit?: AuditRecord;
+  profile?: AuditorProfile;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   products,
-  stats,
+  stats, company, audit, profile,
 }) => {
   const [exportError, setExportError] = useState('');
   const [download, setDownload] = useState<PreparedDownload | null>(null);
@@ -41,7 +44,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     try {
       const next = kind === 'adjustment'
         ? exportEleventaAdjustment(products)
-        : exportAuditToEleventaExcel(products, stats);
+        : exportAuditToEleventaExcel(products, stats, { company, audit, profile });
       if (downloadRef.current) releaseDownload(downloadRef.current);
       downloadRef.current = next;
       setDownload(next);
@@ -148,7 +151,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#303030] text-[#F2F1ED] text-xs font-bold rounded-full border border-white/10 flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Printer className="w-4 h-4 text-[#888888]" />
-            Imprimir Reporte Físico
+            Imprimir dictamen / Guardar como PDF
           </button>
         </div>
 
@@ -166,9 +169,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       </div>
 
       <section className="print-report">
+        {profile?.logo && <img className="report-logo" src={profile.logo} alt="Logotipo del servicio" />}
+        <h2>{profile?.serviceName || 'Servicio de auditoría de inventarios'}</h2>
+        <p className="preserve-lines">{profile?.letterhead}</p>
+        <h2>Dictamen ejecutivo · {company?.name || 'Empresa'}</h2>
+        <p>{company?.address} · Contacto: {company?.contactName} · {company?.phone}</p>
+        <p>Periodo: {audit?.period} · Auditor: {profile?.auditorName || '________________'}</p>
+        <p>Estado: {audit?.status === 'in_progress' ? 'En curso / resultados provisionales' : audit?.status === 'completed' ? 'Completada' : 'Cerrada'}. Pendientes: {stats.notCountedCount}. Códigos no registrados: {stats.unregisteredCount}.</p>
+        <h3>Hallazgos</h3><p className="preserve-lines">{audit?.notes || 'Sin observaciones capturadas.'}</p>
+        <p>Merma a precio de venta: ${stats.missingSaleValue.toFixed(2)} · Sobrante a precio de venta: ${stats.surplusSaleValue.toFixed(2)}.</p>
+        <p>Los productos pendientes no se consideran faltantes. La valoración PVP utiliza precios de venta; la valoración al costo excluye monetariamente los artículos sin costo capturado.</p>
+        <h3>Principales mermas a precio de venta</h3>
+        <ol>{products.filter(p => productStatus(p) === 'missing').sort((a, b) => (b.theoreticalStock - b.physicalStock) * b.price - (a.theoreticalStock - a.physicalStock) * a.price).slice(0, 10).map(p => <li key={p.code}>{p.code} · {p.description} · {roundQuantity(p.theoreticalStock - p.physicalStock)} piezas · ${((p.theoreticalStock - p.physicalStock) * p.price).toFixed(2)}</li>)}</ol>
+        <div className="report-signatures"><p>____________________________<br />Auditor: {profile?.auditorName}</p><p>____________________________<br />Conformidad del cliente: {company?.contactName}</p></div>
         <h1>Auditoría de inventario eleventa</h1>
         <p>{new Date().toLocaleString('es-MX')} · {stats.auditedCount} de {stats.totalCatalog} productos contados</p>
-        <p>Merma: ${stats.missingCostValue.toFixed(2)} · Sobrante: ${stats.surplusCostValue.toFixed(2)}</p>
+        <p>Merma al costo: ${stats.missingCostValue.toFixed(2)} · Sobrante al costo: ${stats.surplusCostValue.toFixed(2)}</p>
         <table>
           <thead>
             <tr>

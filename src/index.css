@@ -805,3 +805,39 @@ main {
   .print-report thead { display: table-header-group; }
   @page { size: A4 landscape; margin: 14mm; }
 }
+
+/* Multiempresa, historial y precios comerciales */
+.workspace-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.workspace-fields:disabled { opacity: .7; }
+.workspace-card { padding: 20px; margin: 16px 0; border: 1px solid #555; border-radius: 20px; background: #202020; overflow-wrap: anywhere; }
+.workspace-card h3, .workspace-card h4 { font-weight: 800; margin-bottom: 12px; }
+.workspace-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 14px 0; }
+.workspace-form, .company-manager { display: grid; gap: 16px; }
+.workspace-form label, .audit-context label, .company-selector { display: grid; gap: 8px; min-width: 0; }
+.workspace-form textarea, .audit-context textarea { width: 100%; min-height: 90px; background: #161616; border: 1px solid #666; border-radius: 12px; padding: 12px; color: #F2F1ED; }
+.company-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 12px; }
+.company-card { display: grid; gap: 10px; text-align: left; margin: 0; cursor: pointer; }
+.company-card[aria-pressed=true] { border: 2px solid #FF6E42; }
+.history-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid #555; }
+.company-selector { max-width: 280px; }
+.file-label input { display: block; max-width: 240px; }
+.report-logo { max-height: 80px; max-width: 220px; object-fit: contain; }
+.preserve-lines { white-space: pre-wrap; }
+.comparison-bar { display: grid; gap: 6px; margin: 16px 0; }
+.comparison-bar meter { width: 100%; height: 24px; }
+.stock-cell small, .price-cell small { display: block; font-size: 12px; color: #ccc; }
+.price-cell strong { font-variant-numeric: tabular-nums; }
+.report-signatures { display: flex; justify-content: space-around; gap: 40px; margin: 48px 0 28px; break-inside: avoid; }
+@media (max-width: 1023px) { .app-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); } .app-nav button { min-width: 0; padding-inline: 4px; font-size: 11px; } .app-header { flex-wrap: wrap; } .company-selector { max-width: 100%; width: 100%; } }
+@media (min-width: 1200px) { .inventory-columns, .inventory-row { grid-template-columns: minmax(140px, 1.5fr) minmax(70px, .65fr) minmax(100px, .8fr) minmax(85px, .7fr) minmax(115px, 1fr) minmax(180px, 1.2fr); } }
+@media print { .print-report .report-logo { display: block; } .report-signatures { color: black; } }
+
+.price-cell { color: #F2F1ED; font-size: 13px; overflow-wrap: anywhere; }
+.company-card:focus-visible, .workspace-card button:focus-visible { outline: 3px solid #FF6E42; outline-offset: 3px; }
+.workspace-card input, .workspace-card select { max-width: 100%; }
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .inventory-columns { display: none; }
+  .inventory-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inventory-row .product-info, .inventory-row .status-cell, .inventory-row .quantity-cell { grid-column: 1 / -1; }
+  .inventory-row .mobile-only { display: inline; }
+}

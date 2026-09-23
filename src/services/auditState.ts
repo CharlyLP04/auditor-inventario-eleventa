@@ -10,7 +10,7 @@ export function productStatus(p: Product) {
   return diff < 0 ? 'missing' : diff > 0 ? 'surplus' : 'match';
 }
 export function calculateStats(products: Product[]): AuditStats {
-  const stats: AuditStats = { totalCatalog: products.length, auditedCount: 0, totalPiecesTheoretical: 0, totalPiecesPhysical: 0, totalMissingPieces: 0, totalSurplusPieces: 0, missingCostValue: 0, surplusCostValue: 0, matchCount: 0, missingCount: 0, surplusCount: 0, notCountedCount: 0, unregisteredCount: 0 };
+  const stats: AuditStats = { totalCatalog: products.length, auditedCount: 0, totalPiecesTheoretical: 0, totalPiecesPhysical: 0, totalMissingPieces: 0, totalSurplusPieces: 0, missingSaleValue: 0, surplusSaleValue: 0, missingCostValue: 0, surplusCostValue: 0, matchCount: 0, missingCount: 0, surplusCount: 0, notCountedCount: 0, unregisteredCount: 0 };
   for (const p of products) {
     stats.totalPiecesTheoretical += p.theoreticalStock;
     stats.totalPiecesPhysical += p.physicalStock;
@@ -19,10 +19,10 @@ export function calculateStats(products: Product[]): AuditStats {
     const state = productStatus(p);
     const diff = roundQuantity(p.physicalStock - p.theoreticalStock);
     if (state === 'match') stats.matchCount++;
-    if (state === 'missing') { stats.missingCount++; stats.totalMissingPieces -= diff; stats.missingCostValue -= diff * p.cost; }
-    if (state === 'surplus') { stats.surplusCount++; stats.totalSurplusPieces += diff; stats.surplusCostValue += diff * p.cost; }
+    if (state === 'missing') { stats.missingCount++; stats.totalMissingPieces -= diff; stats.missingCostValue -= diff * p.cost; stats.missingSaleValue -= diff * p.price; }
+    if (state === 'surplus') { stats.surplusCount++; stats.totalSurplusPieces += diff; stats.surplusCostValue += diff * p.cost; stats.surplusSaleValue += diff * p.price; }
   }
-  for (const key of ['totalPiecesTheoretical', 'totalPiecesPhysical', 'totalMissingPieces', 'totalSurplusPieces', 'missingCostValue', 'surplusCostValue'] as const) stats[key] = roundQuantity(stats[key]);
+  for (const key of ['totalPiecesTheoretical', 'totalPiecesPhysical', 'totalMissingPieces', 'totalSurplusPieces', 'missingCostValue', 'surplusCostValue', 'missingSaleValue', 'surplusSaleValue'] as const) stats[key] = roundQuantity(stats[key]);
   return stats;
 }
 export function validateProducts(value: unknown): value is Product[] {

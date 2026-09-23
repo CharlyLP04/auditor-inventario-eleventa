@@ -1,62 +1,89 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Product } from '../types';
-import { validateProducts } from '../services/auditState';
-export const STORAGE_KEY = 'auditor_eleventa_products_v1';
-function load() {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-    const products: unknown = raw ? JSON.parse(raw) : [];
-    if (!validateProducts(products)) throw new Error('Formato inválido');
-    return { products, raw, error: '' };
-  } catch {
-    return { products: [] as Product[], raw, error: 'No se pudo leer el conteo guardado. No se sobrescribió. Descarga el respaldo antes de reemplazar el catálogo.' };
-  }
-}
+import type { Product, WorkspaceData, Company, AuditRecord, AuditorProfile } from '../types';
+import { calculateStats, validateProducts } from '../services/auditState';
+import { initializeWorkspace, writeWorkspace, newAudit, parseMasterBackup, recoverWorkspace, LEGACY_KEY } from '../services/storageIndexedDB';
+import type { PreparedDownload } from '../services/fileDownload';
+import { prepareDownload, startDownload, releaseDownload } from '../services/fileDownload';
+export const STORAGE_KEY = LEGACY_KEY;
 export function useAuditStore() {
-  const [initial] = useState(load);
-  const [products, setProducts] = useState<Product[]>(initial.products);
-  const [error, setError] = useState(initial.error);
-  const state = useRef({ products: initial.products, raw: initial.raw, blocked: Boolean(initial.error), dirty: false });
+  const [data, setData] = useState<WorkspaceData | null>(null);
+  const state = useRef<WorkspaceData | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [backupDownload, setBackupDownload] = useState<PreparedDownload | null>(null);
+  const backupRef = useRef<PreparedDownload | null>(null);
+  const locked = useRef(false);
+  const productsRef = useRef<{ products: Product[] }>({ products: [] });
+  const adopt = (next: WorkspaceData) => {
+    state.current = next; productsRef.current.products = next.audits.find(a => a.id === next.activeAuditId)?.products ?? []; setData(next);
+  };
   useEffect(() => {
-    const changed = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY && event.key !== null) return;
-      if (state.current.dirty) { state.current.blocked = true; setError('Otra pestaña cambió el inventario. Exporta tu conteo antes de recargar.'); return; }
-      const next = load();
-      state.current = { ...next, blocked: Boolean(next.error), dirty: false };
-      setProducts(next.products); setError(next.error);
-    };
-    const leaving = (event: BeforeUnloadEvent) => { if (state.current.dirty) { event.preventDefault(); event.returnValue = ''; } };
-    window.addEventListener('storage', changed);
+    let mounted = true;
+    initializeWorkspace().then(next => { if (mounted) adopt(next); }).catch(e => { if (mounted) setError(String(e.message)); });
+    const leaving = (event: BeforeUnloadEvent) => { if (locked.current) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', leaving);
-    return () => { window.removeEventListener('storage', changed); window.removeEventListener('beforeunload', leaving); };
+    return () => { mounted = false; if (backupRef.current) releaseDownload(backupRef.current); window.removeEventListener('beforeunload', leaving); };
   }, []);
-  const commit = (next: Product[], replace = false) => {
-    if (!validateProducts(next)) { setError('El conteo contiene datos inválidos o supera el límite permitido.'); return false; }
-    try {
-      const actual = localStorage.getItem(STORAGE_KEY);
-      if (!replace && (state.current.blocked || actual !== state.current.raw)) {
-        state.current.blocked = true;
-        setError('El conteo guardado cambió o no es válido. Descarga un respaldo y recarga antes de continuar.');
-        return false;
-      }
-      if (replace && state.current.blocked && actual) localStorage.setItem(`${STORAGE_KEY}_recovery`, actual);
-      const raw = JSON.stringify(next);
-      localStorage.setItem(STORAGE_KEY, raw);
-      state.current = { products: next, raw, blocked: false, dirty: false };
-      setProducts(next); setError(''); return true;
-    } catch {
-      state.current.products = next; state.current.dirty = true;
-      setProducts(next); setError('No se pudo guardar en este navegador. Tu conteo está en memoria: exporta un respaldo antes de cerrar.');
-      return true;
-    }
+  const change = async (update: (d: WorkspaceData) => WorkspaceData, replace = false) => {
+    if (!state.current || locked.current) { setError('Espera a que termine el guardado antes de continuar.'); return false; }
+    locked.current = true; setBusy(true);
+    try { adopt(await writeWorkspace(update(state.current), state.current.revision, replace, state.current)); setError(''); return true; }
+    catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar.'); return false; }
+    finally { locked.current = false; setBusy(false); }
+  };
+  const expectedAuditId = data?.activeAuditId;
+  const commit = async (products: Product[], _replace = false) => {
+    if (state.current?.activeAuditId !== expectedAuditId) { setError('La auditoría activa cambió. Vuelve a importar o contar en la empresa seleccionada.'); return false; }
+    if (!validateProducts(products)) { setError('El catálogo contiene datos inválidos.'); return false; }
+    const current = state.current?.audits.find(a => a.id === state.current?.activeAuditId);
+    if (!current || current.status !== 'in_progress') { setError('Selecciona una auditoría en curso para editar el conteo.'); return false; }
+    return change(d => ({ ...d, audits: d.audits.map(a => a.id === d.activeAuditId ? { ...a, products, stats: calculateStats(products) } : a) }));
   };
   const backup = () => {
-    let text = JSON.stringify(state.current.products, null, 2);
-    if (state.current.blocked && !state.current.dirty && state.current.raw) text = state.current.raw;
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'Respaldo_Auditor.json'; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+    const content = state.current ? JSON.stringify({ format: 'auditor-eleventa-master', version: 1, exportedAt: new Date().toISOString(), data: state.current }, null, 2) : localStorage.getItem(LEGACY_KEY) ?? '[]';
+    const file = prepareDownload(new Blob([content], { type: 'application/json' }), state.current ? 'Respaldo_Maestro_Auditor.json' : 'Respaldo_Anterior_Auditor.json');
+    if (backupRef.current) releaseDownload(backupRef.current);
+    backupRef.current = file; setBackupDownload(file);
+    startDownload(file);
+    } catch { setError('No se pudo iniciar la descarga. Usa el enlace Guardar respaldo si está disponible.'); }
   };
-  return { products, productsRef: state, error, commit, backup };
+  const saveCompany = (company: Company) => change(d => ({ ...d, companies: [...d.companies.filter(c => c.id !== company.id), company] }));
+  const createAudit = (companyId: string, period: string) => change(d => {
+    if (!d.companies.some(c => c.id === companyId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Selecciona una empresa y un mes válido.');
+    if (d.audits.some(a => a.companyId === companyId && a.period === period)) throw new Error('Ya existe una auditoría de esa empresa para ese mes. Abre su historial.');
+    const audit = newAudit(companyId, period);
+    return { ...d, audits: [...d.audits, audit], activeAuditId: audit.id, activeCompanyId: companyId, companies: d.companies.map(c => c.id === companyId ? { ...c, lastAuditAt: audit.createdAt } : c) };
+  });
+  const selectAudit = (id: string) => change(d => {
+    if (!d.audits.some(a => a.id === id)) throw new Error('Auditoría no encontrada.');
+    return { ...d, activeAuditId: id, activeCompanyId: d.audits.find(a => a.id === id)!.companyId };
+  });
+  const selectCompany = (id: string) => change(d => {
+    if (!d.companies.some(c => c.id === id)) throw new Error('Empresa no encontrada.');
+    const latest = d.audits.filter(a => a.companyId === id).sort((a, b) => b.period.localeCompare(a.period))[0];
+    return { ...d, activeCompanyId: id, activeAuditId: latest?.id ?? null };
+  });
+  const updateAudit = (id: string, patch: Pick<AuditRecord, 'status' | 'notes'>) => change(d => ({ ...d, audits: d.audits.map(a => a.id === id ? { ...a, ...patch, completedAt: patch.status === 'in_progress' ? undefined : a.completedAt ?? new Date().toISOString() } : a) }));
+  const removeCompany = (id: string) => change(d => {
+    const audits = d.audits.filter(a => a.companyId !== id);
+    return { ...d, companies: d.companies.filter(c => c.id !== id), audits, activeCompanyId: d.activeCompanyId === id ? null : d.activeCompanyId, activeAuditId: audits.some(a => a.id === d.activeAuditId) ? d.activeAuditId : null };
+  }, true);
+  const removeAudit = (id: string) => change(d => ({ ...d, audits: d.audits.filter(a => a.id !== id), activeAuditId: d.activeAuditId === id ? null : d.activeAuditId }), true);
+  const saveProfile = (profile: AuditorProfile) => change(d => ({ ...d, profile }));
+  const restore = async (file: File) => {
+    try {
+      if (file.size > 250 * 1024 * 1024) throw new Error('El respaldo supera 250 MB.');
+      const restored = parseMasterBackup(await file.text());
+      if (!window.confirm(`Reemplazar los datos locales por ${restored.companies.length} empresas y ${restored.audits.length} auditorías. Descarga primero tu respaldo actual. ¿Continuar?`)) return false;
+      return await change(() => restored, true);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Respaldo inválido.'); return false; }
+  };
+  const recover = async () => {
+    if (!window.confirm('¿Abrir el directorio sin migrar el conteo anterior? El original se conservará en localStorage. Descarga primero su respaldo.')) return;
+    try { adopt(await recoverWorkspace()); setError(''); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo abrir IndexedDB.'); }
+  };
+  const activeAudit = data?.audits.find(a => a.id === data.activeAuditId);
+  return { data, activeAudit, products: activeAudit?.products ?? [], productsRef, error, busy, commit, backup, backupDownload, saveCompany, createAudit, selectAudit, updateAudit, removeCompany, removeAudit, saveProfile, restore, recover, selectCompany };
 }
+export type AuditStore = ReturnType<typeof useAuditStore>;

@@ -24,8 +24,10 @@ const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN
 export function InventoryTable({
   products,
   onUpdateQuantity,
+  readOnly = false,
 }: {
   products: Product[];
+  readOnly?: boolean;
   onUpdateQuantity: (code: string, quantity: number) => void;
 }) {
   const [search, setSearch] = useState('');
@@ -116,6 +118,7 @@ export function InventoryTable({
       <div className="inventory-columns desktop-only" aria-hidden="true">
         <span>Producto</span>
         <span>En eleventa</span>
+        <span>Precio venta</span>
         <span>Costo</span>
         <span>Estado / Diferencia</span>
         <span>Conteo Físico</span>
@@ -141,19 +144,20 @@ export function InventoryTable({
 
               <div className="stock-cell">
                 <span className="mobile-only text-[#B38F6F] font-bold">En eleventa: </span>
-                <strong>{p.theoreticalStock}</strong>
+                <strong>{p.theoreticalStock}</strong><small>Mínimo: {p.minStock ?? "Sin dato"}</small>
               </div>
 
+              <div className="price-cell"><span>Precio venta: </span><strong>{money.format(p.price)}</strong><small>Mayoreo: {p.wholesalePrice === undefined ? "Sin dato" : money.format(p.wholesalePrice)}</small></div>
               <div className="cost-cell">
                 <span className="mobile-only text-[#B38F6F] font-bold">Costo: </span>
-                {money.format(p.cost)}
+                {p.cost === 0 ? "Sin costo" : money.format(p.cost)}
               </div>
 
               <div className="status-cell">
                 <span className="status-label">{labels[state]}</span>
                 {(state === 'missing' || state === 'surplus') && (
                   <small className="font-bold">
-                    {difference > 0 ? '+' : ''}{difference} pzas · {money.format(difference * p.cost)}
+                    {difference > 0 ? '+' : ''}{difference} pzas · {money.format(difference * (p.cost || p.price))} {p.cost === 0 ? "(a precio venta)" : "(al costo)"}
                   </small>
                 )}
                 {p.isUnregistered && state === 'not_counted' && (
@@ -161,7 +165,7 @@ export function InventoryTable({
                 )}
               </div>
 
-              <div className="quantity-cell">
+              <fieldset className="quantity-cell workspace-fields" disabled={readOnly}>
                 {editing === p.code ? (
                   <form
                     onSubmit={e => { e.preventDefault(); save(p); }}
@@ -225,7 +229,7 @@ export function InventoryTable({
                     </button>
                   </div>
                 )}
-              </div>
+              </fieldset>
             </article>
           );
         })}

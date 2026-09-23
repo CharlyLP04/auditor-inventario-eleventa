@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { TrendingDown, TrendingUp, CheckCircle, Package, AlertTriangle, PieChart, ShieldCheck } from 'lucide-react';
 import type { AuditStats, Product } from '../types';
 import { isCounted, productStatus, roundQuantity } from '../services/auditState';
@@ -11,6 +11,10 @@ interface AuditSummaryProps {
 const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
 export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = [] }) => {
+  const [selectedMode, setSelectedMode] = useState<'sale' | 'cost' | null>(null);
+  const mode = selectedMode ?? (products.some(p => !p.isUnregistered && p.cost === 0) ? 'sale' : 'cost');
+  const missingValue = mode === 'sale' ? stats.missingSaleValue : stats.missingCostValue;
+  const surplusValue = mode === 'sale' ? stats.surplusSaleValue : stats.surplusCostValue;
   const percentage = stats.totalCatalog > 0 
     ? Math.min(100, Math.round((stats.auditedCount / stats.totalCatalog) * 100))
     : 0;
@@ -20,15 +24,15 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
     let theo = 0;
     let phys = 0;
     products.forEach(p => {
-      theo += p.theoreticalStock * p.cost;
+      theo += p.theoreticalStock * (mode === 'sale' ? p.price : p.cost);
       if (isCounted(p)) {
-        phys += p.physicalStock * p.cost;
+        phys += p.physicalStock * (mode === 'sale' ? p.price : p.cost);
       }
     });
     return { theoreticalValue: theo, physicalValue: phys };
-  }, [products]);
+  }, [products, mode]);
 
-  const netBalance = roundQuantity(stats.surplusCostValue - stats.missingCostValue);
+  const netBalance = roundQuantity(surplusValue - missingValue);
   const countedRegistered = stats.matchCount + stats.missingCount + stats.surplusCount;
   const accuracyRate = countedRegistered > 0
     ? Math.round((stats.matchCount / countedRegistered) * 100)
@@ -38,18 +42,22 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
   // Top 4 mermas más costosas
   const topLosses = useMemo(() => {
     return products
-      .filter(p => isCounted(p) && productStatus(p) === 'missing' && p.cost > 0)
+      .filter(p => isCounted(p) && productStatus(p) === 'missing' && (mode === 'sale' ? p.price : p.cost) > 0)
       .map(p => {
         const diff = roundQuantity(p.physicalStock - p.theoreticalStock);
-        const lossAmount = Math.abs(diff) * p.cost;
+        const lossAmount = Math.abs(diff) * (mode === 'sale' ? p.price : p.cost);
         return { ...p, diff, lossAmount };
       })
       .sort((a, b) => b.lossAmount - a.lossAmount)
       .slice(0, 4);
-  }, [products]);
+  }, [products, mode]);
 
   return (
     <div className="summary-panel flex flex-col gap-6 w-full max-w-5xl mx-auto animate-card-pop">
+      <div className="filter-bar" aria-label="Modo de valoración">
+        <button aria-pressed={mode === 'sale'} onClick={() => setSelectedMode('sale')}>A Precio de Venta (PVP)</button>
+        <button aria-pressed={mode === 'cost'} onClick={() => setSelectedMode('cost')}>Al Costo (Inversión)</button>
+      </div>
       {/* 1. Tarjeta Hero: Balance Financiero Ejecutivo */}
       <div className="relative bg-gradient-to-br from-[#202020] via-[#1A1A1A] to-[#121212] border border-white/15 rounded-[32px] p-6 sm:p-8 shadow-2xl overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#FF6E42]/10 via-[#B38F6F]/5 to-transparent rounded-full blur-3xl pointer-events-none" />
@@ -98,7 +106,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
               ? 'bg-[#004E72]/30 border-[#004E72]'
               : 'bg-[#161616]/60 border-white/5'
           }`}>
-            <span className="text-xs font-bold uppercase tracking-wider block text-[#F2F1ED]/80">Diferencia neta al costo</span>
+            <span className="text-xs font-bold uppercase tracking-wider block text-[#F2F1ED]/80">Diferencia neta {mode === 'sale' ? 'a venta' : 'al costo'}</span>
             <div className={`text-xl sm:text-2xl font-black mt-1 ${
               netBalance < 0 ? 'text-[#ff8a9e]' : netBalance > 0 ? 'text-[#7dd3fc]' : 'text-[#F2F1ED]'
             }`}>
@@ -113,7 +121,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
 
       {zeroCostCount > 0 && (
         <p className="message warning" role="status">
-          {zeroCostCount} productos del catálogo tienen costo en cero. Sus diferencias se cuentan en piezas, pero no aportan valor a las mermas o sobrantes en pesos. Los importes solo reflejan productos contados con el costo disponible; no son movimientos de caja.
+          {zeroCostCount} productos del catálogo tienen costo en cero. La vista PVP usa el precio de venta de todos los artículos; la vista al costo deja estos artículos sin valoración. Los importes corresponden a productos contados y no representan movimientos de caja.
         </p>
       )}
 
@@ -134,7 +142,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
           </div>
           <div className="mt-5">
             <div className="text-3xl sm:text-4xl font-black text-[#F2F1ED] tracking-tight">
-              -${stats.missingCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              -${missingValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-[#F2F1ED]/80 font-bold mt-2 leading-relaxed">
               {stats.totalMissingPieces} unidades faltantes respecto a los registros de eleventa.
@@ -157,7 +165,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
           </div>
           <div className="mt-5">
             <div className="text-3xl sm:text-4xl font-black text-[#F2F1ED] tracking-tight">
-              +${stats.surplusCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              +${surplusValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-[#F2F1ED]/80 font-bold mt-2 leading-relaxed">
               {stats.totalSurplusPieces} piezas por encima de la existencia de productos registrados. Los códigos nuevos se muestran por separado.
@@ -264,7 +272,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
                   <div className="text-base font-black text-[#ff8a9e]">
                     -{money.format(item.lossAmount)}
                   </div>
-                  <span className="text-[10px] text-[#888888] font-bold">al costo</span>
+                  <span className="text-[10px] text-[#888888] font-bold">{mode === 'sale' ? 'a precio venta' : 'al costo'}</span>
                 </div>
               </div>
             ))}

@@ -7,7 +7,7 @@ export function ExcelUploader({
   onProductsLoaded,
   currentCount,
 }: {
-  onProductsLoaded: (products: Product[]) => void;
+  onProductsLoaded: (products: Product[]) => void | Promise<void>;
   currentCount: number;
 }) {
   const [busy, setBusy] = useState(false);
@@ -78,7 +78,7 @@ export function ExcelUploader({
       }
       if (!mounted.current) return;
       if (currentCount && !window.confirm('¿Reemplazar el catálogo y los conteos actuales? Descarga un respaldo antes si necesitas conservarlos.')) return;
-      onProductsLoaded(products);
+      await onProductsLoaded(products);
     } catch (error) {
       if (mounted.current) setErrors([error instanceof Error ? error.message : 'Archivo inválido.']);
     } finally {
@@ -161,7 +161,7 @@ export function ExcelUploader({
           onClick={async () => {
             if (currentCount && !window.confirm('¿Reemplazar el conteo actual con datos de demostración?')) return;
             const { getDemoEleventaProducts } = await import('../services/eleventaParser');
-            if (mounted.current) onProductsLoaded(getDemoEleventaProducts());
+            if (mounted.current) await onProductsLoaded(getDemoEleventaProducts());
           }}
         >
           <Sparkles size={16} className="text-[#FF6E42]" />

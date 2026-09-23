@@ -41,8 +41,8 @@ export function parseEleventaExcel(fileBuffer: ArrayBuffer): { products: Product
     stock: ['existencia', 'existencias', 'stock', 'cantidad', 'hay', 'stockteoricoeleventa', 'inventario'],
     cost: ['costo', 'costounitario', 'preciocosto', 'preciodecompra', 'compra'],
     price: ['precio', 'precioventa', 'preciodeventa', 'venta'],
-    wholesale: ['preciomayoreo', 'preciodemayoreo', 'mayoreo'],
-    minimum: ['invminimo', 'inventariominimo', 'existenciaminima', 'stockminimo'],
+    wholesale: ['preciomayor', 'pmayoreo', 'preciomayorista', 'preciomayoreo', 'preciodemayoreo', 'mayoreo'],
+    minimum: ['invmin', 'minimo', 'invminimo', 'inventariominimo', 'existenciaminima', 'stockminimo'],
     department: ['departamento', 'categoria', 'familia'],
     unit: ['tipo', 'tipodeventa', 'unidad'],
   };

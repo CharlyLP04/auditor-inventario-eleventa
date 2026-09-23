@@ -24,6 +24,8 @@ export interface AuditStats {
   totalPiecesPhysical: number;
   totalMissingPieces: number;
   totalSurplusPieces: number;
+  missingSaleValue: number;
+  surplusSaleValue: number;
   missingCostValue: number;  // $ Merma al costo
   surplusCostValue: number;  // $ Sobrante al costo
   matchCount: number;
@@ -41,4 +43,19 @@ export interface ScanLog {
   newTotal: number;
   timestamp: string;
   isUnregistered: boolean;
+}
+
+export interface Company {
+  id: string; name: string; contactName?: string; phone?: string; address?: string;
+  notes?: string; createdAt: string; lastAuditAt?: string;
+}
+export interface AuditRecord {
+  id: string; companyId: string; title: string; period: string;
+  status: 'in_progress' | 'completed' | 'closed'; createdAt: string; completedAt?: string;
+  products: Product[]; stats: AuditStats; notes?: string;
+}
+export interface AuditorProfile { serviceName: string; auditorName: string; letterhead: string; logo?: string; }
+export interface WorkspaceData {
+  companies: Company[]; audits: AuditRecord[]; activeAuditId: string | null; activeCompanyId: string | null;
+  profile: AuditorProfile; revision: number;
 }
