@@ -159,12 +159,12 @@ export function App() {
       <main key={activeAudit?.id ?? "no-audit"} id="contenido" className="app-main animate-card-pop" tabIndex={-1}>
         <div className="page-heading">
           <div>
-            <p className="eyebrow">AUDITORÍA ACTIVA</p>
+            <p className="eyebrow">{activeTab === 'companies' ? 'RELACIONES QUE CRECEN' : 'AUDITORÍA ACTIVA'}</p>
             <h2>{tabs.find(t => t.id === activeTab)?.title}</h2>
           </div>
-          <span className="count-badge">
+          {activeTab !== 'companies' && <span className="count-badge">
             {stats.auditedCount} / {stats.totalCatalog} contados
-          </span>
+          </span>}
         </div>
 
         {error && (
@@ -175,7 +175,7 @@ export function App() {
         
         {notice && <p role="status" className="message">{notice}</p>}
         {busy && <p role="status" className="message">Guardando en este dispositivo…</p>}
-        {activeAudit && <section className="workspace-card audit-context">
+        {activeAudit && activeTab !== 'companies' && <section className="workspace-card audit-context">
           <h3>{company?.name} · {activeAudit.title}</h3>
           <label>Estado de auditoría<select disabled={busy} value={activeAudit.status} onChange={e => {
             const status = e.target.value as typeof activeAudit.status;
