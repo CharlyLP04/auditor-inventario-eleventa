@@ -67,6 +67,15 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
   }));
 
   const wsEleventa = XLSX.utils.json_to_sheet(eleventaAjusteRows, { header: ['Código', 'Descripción', 'Existencia', 'Costo', 'Precio Venta', 'Departamento', 'Tipo'] });
+  wsEleventa['!cols'] = [
+    { wch: 18 },
+    { wch: 44 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 24 },
+    { wch: 12 },
+  ];
   XLSX.utils.book_append_sheet(wb, wsEleventa, 'Ajuste_Inventario_eleventa');
 
   // HOJA 2: Reporte de Auditoría y Discrepancias (Detalle de mermas y sobrantes)
@@ -98,6 +107,21 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
   });
 
   const wsDiscrepancias = XLSX.utils.json_to_sheet(discrepanciaRows);
+  wsDiscrepancias['!cols'] = [
+    { wch: 18 },
+    { wch: 44 },
+    { wch: 22 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 24 },
+    { wch: 16 },
+    { wch: 16 },
+  ];
   XLSX.utils.book_append_sheet(wb, wsDiscrepancias, 'Auditoría_Discrepancias');
 
   // HOJA 3: Resumen Ejecutivo
@@ -125,9 +149,12 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
     { 'Métrica': 'Productos con Diferencias', 'Valor': stats.missingCount + stats.surplusCount },
     { 'Métrica': 'Productos No Registrados en Catálogo', 'Valor': stats.unregisteredCount },
     { 'Métrica': 'Productos registrados con costo en cero (sin valoración al costo)', 'Valor': products.filter(p => !p.isUnregistered && p.cost === 0).length },
+    { 'Métrica': 'Software y Certificación Oficial', 'Valor': 'Grid.mx · Pensamos en código. Creamos soluciones (https://grid.mx)' },
+    { 'Métrica': 'Sistema Auditor', 'Valor': 'Auditor de Inventarios eleventa · Certificado oficial Grid.mx' },
   ];
 
   const wsResumen = XLSX.utils.json_to_sheet(resumenRows);
+  wsResumen['!cols'] = [{ wch: 48 }, { wch: 56 }];
   XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen_Ejecutivo');
 
   return wb;

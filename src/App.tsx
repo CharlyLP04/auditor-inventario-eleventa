@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Download, RotateCcw, ShieldCheck, FileSpreadsheet } from 'lucide-react';
+import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import type { Product } from './types';
 import { InventoryTable } from './components/InventoryTable';
 import { AuditContext } from './components/AuditContext';
@@ -115,9 +115,13 @@ export function App() {
           </button>
           {products.length > 0 && (
             <>
-              <button className="primary" onClick={() => setIsExportOpen(true)}>
-                <Download size={16} aria-hidden="true" />
-                <span>Exportar</span>
+              <button
+                className="primary finish-audit-btn"
+                onClick={() => setIsExportOpen(true)}
+                title="Terminar auditoría y generar dictamen oficial"
+              >
+                <CheckCircle2 size={16} aria-hidden="true" />
+                <span>Terminar Auditoría</span>
               </button>
               <button
                 className="secondary p-2.5 rounded-full"
@@ -183,6 +187,7 @@ export function App() {
         {activeAudit && activeTab !== 'companies' && <AuditContext
           key={activeAudit.id} audit={activeAudit} companyName={company?.name}
           busy={busy} pendingCount={stats.notCountedCount} updateAudit={store.updateAudit}
+          onFinish={() => setIsExportOpen(true)}
         />}
 
         <Suspense fallback={<p role="status" className="message">Cargando herramienta…</p>}>

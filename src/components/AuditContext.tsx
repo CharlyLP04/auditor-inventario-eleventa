@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Building2, ChevronDown, NotebookPen, Save, Check, LockKeyhole } from 'lucide-react';
+import { Building2, ChevronDown, NotebookPen, Save, Check, LockKeyhole, CheckCircle2 } from 'lucide-react';
 import type { AuditRecord } from '../types';
 
 interface Props {
@@ -8,9 +8,10 @@ interface Props {
   busy: boolean;
   pendingCount: number;
   updateAudit: (id: string, patch: Pick<AuditRecord, 'status' | 'notes'>) => Promise<boolean>;
+  onFinish?: () => void;
 }
 
-export function AuditContext({ audit, companyName, busy, pendingCount, updateAudit }: Props) {
+export function AuditContext({ audit, companyName, busy, pendingCount, updateAudit, onFinish }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [open, setOpen] = useState(false);
@@ -37,6 +38,17 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
         await updateAudit(audit.id, { status, notes: audit.notes });
       }}><option value="in_progress">En curso</option><option value="completed">Completada</option><option value="closed">Cerrada</option></select>
     </label>
+    {onFinish && (
+      <button
+        type="button"
+        className="audit-finish-trigger"
+        onClick={onFinish}
+        title="Finalizar auditoría y generar dictamen oficial"
+      >
+        <CheckCircle2 size={15} aria-hidden="true" />
+        <span>Terminar auditoría</span>
+      </button>
+    )}
     <>
       <button type="button" ref={trigger} className="audit-notes-trigger" aria-expanded={open} aria-controls={`notes-panel-${audit.id}`} onClick={() => setOpen(value => !value)}>
         <NotebookPen size={17} aria-hidden="true" /><span>{dirty ? 'Notas · sin guardar' : 'Notas'}</span>
