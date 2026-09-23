@@ -11,10 +11,29 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
+  const isAppNavigation = event.request.mode === 'navigate' && ['/', '/index.html'].includes(url.pathname);
+  if (isAppNavigation || url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(event.request);
+        if (fresh && fresh.ok) {
+          const cache = await caches.open(CACHE);
+          cache.put(event.request, fresh.clone());
+          return fresh;
+        }
+      } catch {
+        // Red no disponible: servir desde cache offline
+      }
+      const cache = await caches.open(CACHE);
+      const saved = await cache.match(isAppNavigation ? '/index.html' : event.request);
+      if (saved) return saved;
+      return fetch(event.request);
+    })());
+    return;
+  }
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const isAppNavigation = event.request.mode === 'navigate' && ['/', '/index.html'].includes(url.pathname);
-    const saved = await cache.match(isAppNavigation ? '/index.html' : event.request);
+    const saved = await cache.match(event.request);
     if (saved) return saved;
     return fetch(event.request);
   })());
