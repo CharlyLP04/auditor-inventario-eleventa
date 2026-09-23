@@ -895,3 +895,39 @@ main {
   .clients-studio { gap: 30px; }.clients-hero { grid-template-columns: 1fr; border-radius: 23px; }.clients-hero-copy { padding: 28px; }.clients-hero h2 { font-size: clamp(33px, 6vw, 45px); }.clients-orbit { display: none; }.clients-metrics > div { padding: 17px 14px; gap: 8px; grid-template-columns: 1fr; }.clients-metrics svg { display: none; }.clients-metrics strong { font-size: 26px; }.clients-metrics span { font-size: 10px; line-height: 1.5; }.clients-section-heading { align-items: start; flex-wrap: wrap; gap: 17px; }.clients-studio .clients-search { width: 100%; }.clients-empty { gap: 22px; padding: 28px 22px; }.empty-company-art { width: 105px; transform: scale(.8); transform-origin: center; }.clients-empty h3 { font-size: 25px; }.clients-empty .studio-kicker { font-size: 8px; }.clients-studio .company-edit-form { padding: 20px; grid-template-columns: 1fr; }.identity-layout { grid-template-columns: 1fr; }.identity-preview { border-left: 0; border-top: 1px solid #ffffff12; padding: 28px 35px; }.identity-paper { max-width: 340px; }.identity-badge { display: none; }.clients-vault { padding: 20px; }.vault-actions { padding: 0; }.clients-studio .company-detail { padding: 20px; }.monthly-create .primary { width: 100%; }
 }
 @media (max-width: 430px) { .clients-empty { flex-direction: column; text-align: center; gap: 12px; }.empty-company-art { height: 150px; }.clients-empty h3 br { display: none; }.clients-empty .primary { width: 100%; }.identity-form { padding: 20px; }.identity-paper { padding: 22px; }.paper-letterhead > span { display: none; }.clients-vault .vault-icon { display: none; }.vault-actions > * { flex: 1; }.clients-studio .vault-actions .secondary { white-space: normal; text-align: center; } }
+
+/* Contexto compacto de auditoría y libreta desplegable. */
+.audit-ribbon { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 18px; margin: 0 0 24px; border: 1px solid #ffffff14; border-radius: 20px; background: linear-gradient(110deg, #25211e, #1e1e1e 55%); }
+.audit-ribbon-heading { display: flex; align-items: center; gap: 12px; flex: 1; min-width: min(220px, 100%); }
+.audit-ribbon-icon { width: 40px; height: 40px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid #c39c7625; border-radius: 12px; background: #b38f6f12; color: #c7a689; }
+.audit-ribbon-heading > div { display: grid; gap: 4px; min-width: 0; }
+.audit-ribbon-heading strong { font-size: 13px; line-height: 1.4; color: #eee7de; overflow-wrap: anywhere; }
+.audit-ribbon-heading > div > span { font-size: 11px; color: #aba198; }
+.audit-status-pill { display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 44px; border: 1px solid #ffffff12; border-radius: 12px; background: #ffffff04; }
+.audit-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #efac73; box-shadow: 0 0 0 3px #efac7310; flex-shrink: 0; }
+.audit-status-pill.status-completed .audit-status-dot { background: #a9c7a4; }.audit-status-pill.status-closed .audit-status-dot { background: #a2b4c7; }
+.audit-status-pill select { padding: 0 3px; min-height: 44px; max-width: 155px; background: transparent; color: #e0d7ce; font-size: 12px; border: 0; cursor: pointer; }
+.audit-status-pill option { color: #f2f1ed; background: #262320; }
+.audit-status-pill:focus-within { outline: 2px solid #ff875d; outline-offset: 3px; }
+.audit-notes-trigger { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 0 15px; list-style: none; border: 1px solid #cda37f35; border-radius: 12px; color: #e4c3a6; background: #b38f6f0d; font-size: 12px; font-weight: 650; cursor: pointer; transition: background .2s, border-color .2s; }
+.audit-notes-trigger:hover, .audit-notes-trigger[aria-expanded=true] { background: #ff875d15; border-color: #ff875d70; color: #ffb28b; }
+.audit-notes-trigger:focus-visible { outline: 2px solid #ff875d; outline-offset: 4px; }
+.notes-chevron { transition: transform .2s; }.audit-notes-trigger[aria-expanded=true] .notes-chevron { transform: rotate(180deg); }
+.notes-saved-mark { width: 17px; height: 17px; display: grid; place-items: center; border-radius: 50%; background: #b7cda51a; color: #bdcea9; }
+.audit-notes-editor { flex-basis: 100%; min-width: 0; padding: 20px 2px 2px; border-top: 1px solid #ffffff10; margin-top: 2px; }
+.audit-notes-editor[hidden] { display: none; }
+.audit-notes-heading { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.audit-notes-icon { color: #ccaa8c; }.audit-notes-heading h3 { font-size: 16px; font-weight: 700; letter-spacing: -.025em; color: #f0e9e0; margin: 0 0 5px; }.audit-notes-heading p { font-size: 12px; color: #b0a79d; line-height: 1.5; }
+.audit-notes-editor textarea { display: block; width: 100%; min-height: 140px; max-height: 50vh; resize: vertical; border: 1px solid #ffffff20; border-radius: 14px; background: #161616; color: #eee7de; padding: 16px; font-size: 13px; line-height: 1.8; }
+.audit-notes-editor textarea::placeholder { color: #9c9389; }.audit-notes-editor textarea:focus-visible { outline: 2px solid #ff875d; outline-offset: 3px; }
+.audit-notes-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; }
+.audit-notes-footer > span { color: #baab9c; font-size: 11px; }.audit-notes-footer > span > svg { display: inline; margin-right: 5px; }.audit-notes-footer small { display: block; color: #a3998e; margin-top: 4px; font-size: 10px; font-variant-numeric: tabular-nums; }
+.audit-notes-footer > div { display: flex; gap: 9px; }.audit-notes-footer button { min-height: 44px; padding: 10px 16px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; }
+.notes-cancel { color: #c6b9ac; border: 1px solid #ffffff15; background: #ffffff04; cursor: pointer; }.audit-notes-feedback { flex-basis: 100%; font-size: 12px; color: #dfc6ac; padding: 3px 0; }
+@media (max-width: 640px) {
+  .audit-ribbon { padding: 14px; gap: 10px; border-radius: 17px; }
+  .audit-ribbon-heading { flex-basis: 100%; margin-bottom: 3px; }
+  .audit-status-pill, .audit-notes-trigger { flex: 1; justify-content: center; }
+  .audit-notes-footer { align-items: stretch; }.audit-notes-footer > div { margin-left: auto; }
+  .audit-notes-heading h3 { font-size: 15px; }.audit-notes-editor textarea { min-height: 150px; }
+}

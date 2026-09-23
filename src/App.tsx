@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from 'react';
 import { Download, RotateCcw, ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import type { Product } from './types';
 import { InventoryTable } from './components/InventoryTable';
+import { AuditContext } from './components/AuditContext';
 import { AuditSummary } from './components/AuditSummary';
 import { CompanyManager } from './components/CompanyManager';
 import { MonthlyComparison } from './components/MonthlyComparison';
@@ -175,18 +176,10 @@ export function App() {
         
         {notice && <p role="status" className="message">{notice}</p>}
         {busy && <p role="status" className="message">Guardando en este dispositivo…</p>}
-        {activeAudit && activeTab !== 'companies' && <section className="workspace-card audit-context">
-          <h3>{company?.name} · {activeAudit.title}</h3>
-          <label>Estado de auditoría<select disabled={busy} value={activeAudit.status} onChange={e => {
-            const status = e.target.value as typeof activeAudit.status;
-            if (status !== 'in_progress' && !window.confirm(`¿Finalizar esta auditoría? Quedan ${stats.notCountedCount} productos pendientes. El conteo quedará en modo lectura y podrás reabrirlo.`)) return;
-            void store.updateAudit(activeAudit.id, { status, notes: activeAudit.notes });
-          }}><option value="in_progress">En curso</option><option value="completed">Completada</option><option value="closed">Cerrada</option></select></label>
-          <form key={`${activeAudit.id}-${activeAudit.notes ?? ''}`} onSubmit={e => { e.preventDefault(); const fields = new FormData(e.currentTarget); void store.updateAudit(activeAudit.id, { status: activeAudit.status, notes: String(fields.get('notes') ?? '') }); }}>
-            <label>Hallazgos / notas<textarea name="notes" defaultValue={activeAudit.notes} maxLength={10000} disabled={busy || readOnly} /></label><button className="secondary" disabled={busy || readOnly}>Guardar notas</button>
-          </form>
-          {readOnly && <p>Auditoría en modo lectura. Cambia el estado a En curso para editar.</p>}
-        </section>}
+        {activeAudit && activeTab !== 'companies' && <AuditContext
+          key={activeAudit.id} audit={activeAudit} companyName={company?.name}
+          busy={busy} pendingCount={stats.notCountedCount} updateAudit={store.updateAudit}
+        />}
 
         <Suspense fallback={<p role="status" className="message">Cargando herramienta…</p>}>
           {activeTab === 'companies' && <CompanyManager key={data?.activeCompanyId} store={store} onOpen={() => { setLastScannedInfo(null); setActiveTab('list'); }} />}
