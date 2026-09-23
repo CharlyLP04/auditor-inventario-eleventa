@@ -113,7 +113,6 @@ export function App() {
           <button className="secondary" onClick={backup} title="Descargar respaldo JSON">
             Respaldo
           </button>
-          {store.backupDownload && <a className="secondary download-fallback" href={store.backupDownload.url} download={store.backupDownload.fileName}>Guardar respaldo</a>}
           {products.length > 0 && (
             <>
               <button className="primary" onClick={() => setIsExportOpen(true)}>
@@ -175,6 +174,11 @@ export function App() {
         )}
         
         {notice && <p role="status" className="message">{notice}</p>}
+        {store.backupDownload && (
+          <p role="status" className="message">
+            Si tu navegador no inició la descarga automática: <a href={store.backupDownload.url} download={store.backupDownload.fileName} className="underline text-[#FF6E42] font-bold">Guardar {store.backupDownload.fileName}</a>
+          </p>
+        )}
         {busy && <p role="status" className="message">Guardando en este dispositivo…</p>}
         {activeAudit && activeTab !== 'companies' && <AuditContext
           key={activeAudit.id} audit={activeAudit} companyName={company?.name}

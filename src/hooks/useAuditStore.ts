@@ -41,12 +41,17 @@ export function useAuditStore() {
   };
   const backup = () => {
     try {
-    const content = state.current ? JSON.stringify({ format: 'auditor-eleventa-master', version: 1, exportedAt: new Date().toISOString(), data: state.current }, null, 2) : localStorage.getItem(LEGACY_KEY) ?? '[]';
-    const file = prepareDownload(new Blob([content], { type: 'application/json' }), state.current ? 'Respaldo_Maestro_Auditor.json' : 'Respaldo_Anterior_Auditor.json');
-    if (backupRef.current) releaseDownload(backupRef.current);
-    backupRef.current = file; setBackupDownload(file);
-    startDownload(file);
-    } catch { setError('No se pudo iniciar la descarga. Usa el enlace Guardar respaldo si está disponible.'); }
+      const content = state.current ? JSON.stringify({ format: 'auditor-eleventa-master', version: 1, exportedAt: new Date().toISOString(), data: state.current }, null, 2) : localStorage.getItem(LEGACY_KEY) ?? '[]';
+      const file = prepareDownload(new Blob([content], { type: 'application/json' }), state.current ? 'Respaldo_Maestro_Auditor.json' : 'Respaldo_Anterior_Auditor.json');
+      if (backupRef.current) releaseDownload(backupRef.current);
+      backupRef.current = file;
+      setBackupDownload(null);
+      try {
+        startDownload(file);
+      } catch {
+        setBackupDownload(file);
+      }
+    } catch { setError('No se pudo generar el archivo de respaldo.'); }
   };
   const saveCompany = (company: Company) => change(d => ({ ...d, companies: [...d.companies.filter(c => c.id !== company.id), company] }));
   const createAudit = (companyId: string, period: string) => change(d => {
