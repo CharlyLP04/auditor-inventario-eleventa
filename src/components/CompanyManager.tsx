@@ -15,6 +15,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
   const addCompany = () => setEditing({ id: createId(), name: '', createdAt: new Date().toISOString() });
   if (!store.data) return <div><p role="status">{store.error ? "No se pudo abrir el directorio local." : "Abriendo directorio local…"}</p>{store.error && <button className="secondary" onClick={store.recover}>Abrir directorio conservando el respaldo anterior</button>}</div>;
   const data = store.data;
+  const isAdmin = store.role === 'admin';
   const company = data.companies.find(c => c.id === selected);
   const history = data.audits.filter(a => a.companyId === selected).sort((a, b) => b.period.localeCompare(a.period));
   const visibleCompanies = data.companies.filter(c => `${c.name} ${c.contactName ?? ''}`.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es')));
@@ -25,7 +26,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
         <span className="studio-kicker"><span /> TU CARTERA. BAJO CONTROL.</span>
         <h2>Grandes relaciones.<br /><em>Cuentas claras.</em></h2>
         <p>Cada negocio, su historia. Un solo lugar para gestionar tus clientes y dar seguimiento a cada auditoría.</p>
-        <button className="primary studio-create" disabled={store.busy} onClick={addCompany}><Plus size={18} aria-hidden="true" /> Agregar empresa <ArrowUpRight size={18} aria-hidden="true" /></button>
+        <button className="primary studio-create" disabled={store.busy || !isAdmin} title={!isAdmin ? 'Requiere Administrador' : undefined} onClick={addCompany}><Plus size={18} aria-hidden="true" /> Agregar empresa <ArrowUpRight size={18} aria-hidden="true" /></button>
       </div>
       <div className="clients-orbit" aria-hidden="true"><div className="orbit-ring ring-one" /><div className="orbit-ring ring-two" /><div className="orbit-ring ring-three" /><div className="orbit-core"><Building2 size={44} strokeWidth={1.3} /></div><span className="orbit-tag tag-one"><ShieldCheck size={15} /> Control local</span><span className="orbit-tag tag-two"><FileCheck2 size={15} /> Cada mes cuenta</span><span className="orbit-dot" /></div>
       <div className="clients-metrics">
@@ -40,7 +41,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
       <div className="clients-section-heading"><div><span className="studio-kicker">01 / DIRECTORIO</span><h3>Tus empresas <span className="studio-count">{data.companies.length}</span></h3></div>
         <label className="clients-search"><Search size={18} aria-hidden="true" /><input type="search" aria-label="Buscar empresa o contacto" placeholder="Buscar empresa o contacto…" value={search} onChange={e => setSearch(e.target.value)} /></label>
       </div>
-      {editing && <form key={editing.id} className="workspace-card workspace-form company-edit-form" onSubmit={async e => {
+      {isAdmin && editing && <form key={editing.id} className="workspace-card workspace-form company-edit-form" onSubmit={async e => {
         e.preventDefault(); const fields = new FormData(e.currentTarget);
         const value = (key: string) => String(fields.get(key) ?? '').trim();
         if (!value('name')) return;
@@ -67,26 +68,26 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
       </div>
       {!data.companies.length && <div className="clients-empty">
         <div className="empty-company-art" aria-hidden="true"><div className="empty-paper paper-back" /><div className="empty-paper paper-front"><Building2 size={30} /><span /><span /><i><Plus size={18} /></i></div></div>
-        <div><span className="studio-kicker">EL PRIMER PASO DE MUCHOS</span><h3>Tu próximo cliente<br />empieza aquí.</h3><p>Agrega una empresa, abre su auditoría mensual y convierte cada conteo en información valiosa.</p><button className="primary" onClick={addCompany}>Crear mi primera empresa <ArrowRight size={17} aria-hidden="true" /></button></div>
+        <div><span className="studio-kicker">EL PRIMER PASO DE MUCHOS</span><h3>Tu próximo cliente<br />empieza aquí.</h3><p>Agrega una empresa, abre su auditoría mensual y convierte cada conteo en información valiosa.</p><button className="primary" disabled={!isAdmin} onClick={addCompany}>Crear mi primera empresa <ArrowRight size={17} aria-hidden="true" /></button></div>
       </div>}
       {data.companies.length > 0 && !visibleCompanies.length && <p className="message">No encontramos empresas con esa búsqueda.</p>}
       {company && <section className="workspace-card company-detail">
         <span className="studio-kicker">EXPEDIENTE DEL CLIENTE</span><h3>{company.name}</h3><div className="company-detail-contact">{company.address && <span><MapPin size={15} />{company.address}</span>}{company.phone && <span><Phone size={15} />{company.phone}</span>}</div><p className="preserve-lines">{company.notes}</p>
-        <div className="workspace-actions"><button className="secondary" onClick={() => setEditing(company)}><Pencil size={15} aria-hidden="true" /> Editar datos</button><button className="secondary" onClick={async () => {
+        <div className="workspace-actions"><button className="secondary" disabled={!isAdmin} onClick={() => setEditing(company)}><Pencil size={15} aria-hidden="true" /> Editar datos</button><button className="secondary" disabled={!isAdmin} onClick={async () => {
           if (window.confirm(`¿Eliminar ${company.name} y todas sus auditorías? Esta acción es permanente. Conserva un respaldo maestro antes de continuar.`) && await store.removeCompany(company.id)) setSelected('');
         }}><Trash2 size={15} aria-hidden="true" /> Eliminar empresa</button></div>
         <form className="workspace-actions monthly-create" onSubmit={async e => { e.preventDefault(); if (await store.createAudit(company.id, period)) onOpen(); }}>
-          <label>Periodo<input type="month" required value={period} onChange={e => setPeriod(e.target.value)} /></label><button className="primary"><Plus size={16} aria-hidden="true" /> Nueva auditoría mensual</button>
+          <label>Periodo<input type="month" disabled={!isAdmin} required value={period} onChange={e => setPeriod(e.target.value)} /></label><button disabled={!isAdmin} className="primary"><Plus size={16} aria-hidden="true" /> Nueva auditoría mensual</button>
         </form>
         <h4 className="history-title"><CalendarDays size={18} aria-hidden="true" /> Historial mensual <span className="studio-count">{history.length}</span></h4>{!history.length && <p className="history-empty">Su historia está por comenzar. Abre la primera auditoría arriba.</p>}
         {history.map(a => <article className="history-row" key={a.id}>
           <div><strong>{a.title}</strong><p>{statusLabel[a.status]} · {a.stats.auditedCount}/{a.stats.totalCatalog} productos · {a.stats.totalPiecesPhysical} piezas contadas</p><small>Merma PVP {money.format(a.stats.missingSaleValue)} · Costo {money.format(a.stats.missingCostValue)}</small></div>
-          <div className="workspace-actions"><button className="secondary" onClick={async () => { if (await store.selectAudit(a.id)) onOpen(); }}>Abrir <ArrowUpRight size={15} aria-hidden="true" /></button><button className="secondary" onClick={() => { if (window.confirm(`¿Eliminar ${a.title}? Guarda un respaldo antes de continuar.`)) void store.removeAudit(a.id); }}>Eliminar</button></div>
+          <div className="workspace-actions"><button className="secondary" onClick={async () => { if (await store.selectAudit(a.id)) onOpen(); }}>Abrir <ArrowUpRight size={15} aria-hidden="true" /></button><button className="secondary" disabled={!isAdmin} onClick={() => { if (window.confirm(`¿Eliminar ${a.title}? Guarda un respaldo antes de continuar.`)) void store.removeAudit(a.id); }}>Eliminar</button></div>
         </article>)}
       </section>}
     </fieldset>
-    <ProfileEditor key={JSON.stringify(data.profile)} profile={data.profile} disabled={store.busy} save={store.saveProfile} />
-    <section className="clients-vault"><span className="vault-icon"><ShieldCheck size={25} aria-hidden="true" /></span><div><h3>Tu trabajo, contigo.</h3><p>Guardado en este navegador. Exporta una copia para proteger tu historial o llevarlo a otro dispositivo.</p></div><div className="vault-actions"><button className="secondary" disabled={store.busy} onClick={store.backup}><Download size={16} aria-hidden="true" /> Respaldo maestro</button><label className={`secondary studio-file-button ${store.busy ? 'is-disabled' : ''}`}><Upload size={16} aria-hidden="true" /> Restaurar copia<input className="sr-only" disabled={store.busy} type="file" accept=".json,application/json" onChange={async e => { const file = e.target.files?.[0]; e.target.value = ''; if (file && await store.restore(file)) { setSelected(''); setEditing(null); setMessage('Respaldo restaurado.'); } }} /></label></div></section>
+    <ProfileEditor key={JSON.stringify(data.profile)} profile={data.profile} disabled={store.busy || !isAdmin} save={store.saveProfile} />
+    <section className="clients-vault"><span className="vault-icon"><ShieldCheck size={25} aria-hidden="true" /></span><div><h3>Tu trabajo, contigo.</h3><p>Guardado en este navegador. Exporta una copia para proteger tu historial o llevarlo a otro dispositivo.</p></div><div className="vault-actions"><button className="secondary" disabled={store.busy} onClick={store.backup}><Download size={16} aria-hidden="true" /> Respaldo maestro</button><label className={`secondary studio-file-button ${store.busy || !isAdmin ? 'is-disabled' : ''}`}><Upload size={16} aria-hidden="true" /> Restaurar copia<input className="sr-only" disabled={store.busy || !isAdmin} type="file" accept=".json,application/json" onChange={async e => { const file = e.target.files?.[0]; e.target.value = ''; if (file && await store.restore(file)) { setSelected(''); setEditing(null); setMessage('Respaldo restaurado.'); } }} /></label></div></section>
   </div>;
 }
 function ProfileEditor({ profile, save, disabled }: { profile: AuditorProfile; save: (p: AuditorProfile) => Promise<boolean>; disabled: boolean }) {

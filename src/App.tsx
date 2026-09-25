@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
-import type { Product } from './types';
+import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2, Shield, UserRound, KeyRound } from 'lucide-react';
+import type { Product, CountMode } from './types';
 import { InventoryTable } from './components/InventoryTable';
 import { AuditContext } from './components/AuditContext';
 import { AuditSummary } from './components/AuditSummary';
@@ -9,8 +9,9 @@ import { MonthlyComparison } from './components/MonthlyComparison';
 import { InstallApp } from './components/InstallApp';
 import { BrandLogo } from './components/BrandLogo';
 import { StoreIcon, TicketIcon, CardStockIcon, GearSettingsIcon } from './components/CustomIcons';
-import { soundService } from './services/audioService';
-import { calculateStats, roundQuantity, validQuantity } from './services/auditState';
+import { calculateStats } from './services/auditState';
+import { PinAuthModal } from './components/PinAuthModal';
+import { DepartmentSummary } from './components/DepartmentSummary';
 import { useAuditStore } from './hooks/useAuditStore';
 
 const BarcodeScanner = lazy(() => import('./components/BarcodeScanner').then(m => ({ default: m.BarcodeScanner })));
@@ -38,36 +39,22 @@ export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('companies');
   const [lastScannedInfo, setLastScannedInfo] = useState<{ code: string; description: string; quantity: number; theoretical: number; isNew: boolean } | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const isAdmin = store.role === 'admin';
+  const [pinMode, setPinMode] = useState<'unlock' | 'change' | null>(null);
   const [notice, setNotice] = useState('');
   const stats = useMemo(() => calculateStats(products), [products]);
 
-  const handleScan = async (barcode: string, quantityToAdd = 1) => {
-    if (busy || readOnly) { setNotice('Espera a que termine el guardado o abre una auditoría en curso.'); return; }
-    const code = barcode.trim();
-    if (!code || code.length > 128 || !validQuantity(quantityToAdd) || quantityToAdd === 0) {
-      setNotice('Revisa el código y la cantidad.');
-      return;
-    }
-    const previous = productsRef.current.products;
-    const existing = previous.find(p => p.code === code);
-    const quantity = roundQuantity((existing?.physicalStock ?? 0) + quantityToAdd);
-    if (!validQuantity(quantity)) {
-      setNotice('La cantidad supera el límite permitido.');
-      return;
-    }
-    const product: Product = existing
-      ? { ...existing, physicalStock: quantity, counted: true, lastScannedAt: new Date().toISOString() }
-      : { code, description: `Producto no registrado (${code})`, cost: 0, price: 0, department: 'Sin clasificar', theoreticalStock: 0, physicalStock: quantity, isUnregistered: true, counted: true, lastScannedAt: new Date().toISOString() };
-
-    if (!await commit(existing ? previous.map(p => p.code === code ? product : p) : [product, ...previous])) return;
-    setLastScannedInfo({ code, description: product.description, quantity, theoretical: product.theoreticalStock, isNew: Boolean(product.isUnregistered) });
-    setNotice('');
-    if (product.isUnregistered) soundService.playWarningBeep(); else soundService.playScanBeep();
+  const handleScan = async (barcode: string, quantity = 1, mode: CountMode = 'add') => {
+    if (busy || readOnly) { setNotice('Espera a que termine el guardado o abre una auditoría en curso.'); return null; }
+    const product = await store.recordCount(barcode, quantity, mode, store.scannerPreferences.activeZoneDepartment);
+    if (!product) return null;
+    setLastScannedInfo({ code: product.code, description: product.description, quantity: product.physicalStock, theoretical: product.theoreticalStock, isNew: Boolean(product.isUnregistered) });
+    setNotice(''); return product;
   };
-
   const handleUpdateQuantity = async (code: string, quantity: number) => {
-    if (!validQuantity(quantity)) return;
-    await commit(productsRef.current.products.map(p => p.code === code ? { ...p, physicalStock: roundQuantity(quantity), counted: true } : p));
+    const product = await store.recordCount(code, quantity, 'set');
+    if (product && lastScannedInfo?.code === code) setLastScannedInfo({ code, description: product.description, quantity: product.physicalStock, theoretical: product.theoreticalStock, isNew: Boolean(product.isUnregistered) });
+    return Boolean(product);
   };
 
   const handleProductsLoaded = async (next: Product[]) => {
@@ -93,6 +80,7 @@ export function App() {
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
       
       {/* Header con el nuevo BrandLogo vectorial y estética Obsidian */}
+      {pinMode && <PinAuthModal mode={pinMode} onClose={() => setPinMode(null)} unlock={store.unlockAdmin} changePin={store.changePin} />}
       <header className="app-header">
         <div className="brand">
           <BrandLogo size={44} />
@@ -110,10 +98,14 @@ export function App() {
           }}><option value="" disabled>Selecciona empresa</option>{data?.companies.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
         </label>
         <div className="header-actions">
+          <button className="secondary role-toggle" disabled={busy || !data} onClick={() => { if (isAdmin) { store.lockAdmin(); setActiveTab(current => current === 'upload' ? 'list' : current); setIsExportOpen(false); } else setPinMode('unlock'); }}>
+            {isAdmin ? <Shield size={17} aria-hidden="true" /> : <UserRound size={17} aria-hidden="true" />}{isAdmin ? 'Administrador · Bloquear' : 'Auditor · Acceso admin'}
+          </button>
+          {isAdmin && <button className="secondary" disabled={busy} onClick={() => setPinMode('change')}><KeyRound size={16} aria-hidden="true" /> Cambiar PIN</button>}
           <button className="secondary" onClick={backup} title="Descargar respaldo JSON">
             Respaldo
           </button>
-          {products.length > 0 && (
+          {isAdmin && products.length > 0 && (
             <>
               <button
                 className="primary finish-audit-btn"
@@ -138,8 +130,8 @@ export function App() {
       </header>
 
       {/* Floating Pill Dock inferior con íconos personalizados de doble estado */}
-      <nav className="app-nav" aria-label="Navegación principal">
-        {tabs.map(({ id, title, icon: IconComponent }) => {
+      <nav data-role={store.role} className="app-nav" aria-label="Navegación principal">
+        {tabs.filter(t => isAdmin || t.id !== 'upload').map(({ id, title, icon: IconComponent }) => {
           const isActive = activeTab === id;
           return (
             <button
@@ -187,7 +179,7 @@ export function App() {
         {activeAudit && activeTab !== 'companies' && <AuditContext
           key={activeAudit.id} audit={activeAudit} companyName={company?.name}
           busy={busy} pendingCount={stats.notCountedCount} updateAudit={store.updateAudit}
-          onFinish={() => setIsExportOpen(true)}
+          canManage={isAdmin} onFinish={isAdmin ? () => setIsExportOpen(true) : undefined}
         />}
 
         <Suspense fallback={<p role="status" className="message">Cargando herramienta…</p>}>
@@ -195,7 +187,8 @@ export function App() {
           {activeTab === 'scanner' && (
             products.length && !readOnly ? (
               <div className="count-layout">
-                <BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} />
+                <BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={store.scannerPreferences}
+                  onPreferencesChange={store.saveScannerPreferences} saving={busy} canUndo={store.canUndo} onUndo={async () => { const saved = await store.undoCount(); if (saved) setLastScannedInfo(null); return saved; }} />
                 <aside className="desktop-only">
                   <AuditSummary stats={stats} products={products} />
                   <p className="message mt-4">
@@ -218,19 +211,19 @@ export function App() {
           )}
 
           {activeTab === 'list' && (
-            <InventoryTable products={products} onUpdateQuantity={handleUpdateQuantity} readOnly={busy || readOnly} />
+            <InventoryTable products={products} onUpdateQuantity={handleUpdateQuantity} readOnly={busy || readOnly} isAdmin={isAdmin} onUpdateProduct={store.updateProduct} />
           )}
 
-          {activeTab === 'stats' && <><AuditSummary stats={stats} products={products} />{activeAudit && data && <MonthlyComparison current={activeAudit} audits={data.audits} />}</>}
+          {activeTab === 'stats' && <><DepartmentSummary products={products} /><AuditSummary stats={stats} products={products} />{activeAudit && data && <MonthlyComparison current={activeAudit} audits={data.audits} />}</>}
 
-          {activeTab === 'upload' && (
+          {activeTab === 'upload' && isAdmin && (
             <fieldset className="workspace-fields" disabled={busy || readOnly}>
               {readOnly && <p className="message">Abre una auditoría en curso desde Clientes para importar su catálogo.</p>}
               <ExcelUploader onProductsLoaded={handleProductsLoaded} currentCount={products.length} />
             </fieldset>
           )}
 
-          {isExportOpen && (
+          {isExportOpen && isAdmin && (
             <ExportModal isOpen onClose={() => setIsExportOpen(false)} products={products} stats={stats} company={company} audit={activeAudit} profile={data?.profile} />
           )}
         </Suspense>

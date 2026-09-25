@@ -1,12 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { soundService } from '../services/audioService';
+import { soundService, speakCount, stopSpeech } from '../services/audioService';
 import { CameraIcon, TorchIcon } from './CustomIcons';
-import { AlertCircle, Search, Layers, Plus } from 'lucide-react';
+import { AlertCircle, Search, Layers, Plus, Eye, Volume2, Undo2, Star } from 'lucide-react';
+
+import type { Product, CountMode, ScannerPreferences } from '../types';
+import { ScanCooldown, DEFAULT_SCANNER } from '../services/scannerState';
+import { roundQuantity } from '../services/auditState';
+import { QuantityKeypadModal } from './QuantityKeypadModal';
 
 interface BarcodeScannerProps {
-  onScan: (barcode: string, quantityToAdd?: number) => void;
+  onScan: (barcode: string, quantityToAdd?: number, mode?: CountMode) => void | Promise<Product | null | void>;
+  products?: Product[];
+  preferences?: ScannerPreferences;
+  onPreferencesChange?: (value: ScannerPreferences) => Promise<boolean>;
+  onUndo?: () => Promise<boolean>;
+  canUndo?: boolean;
+  saving?: boolean;
   lastScannedInfo: {
     code: string;
     description: string;
@@ -16,32 +27,40 @@ interface BarcodeScannerProps {
   } | null;
 }
 
-export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps) => {
+export const BarcodeScanner = ({ onScan, lastScannedInfo, products = [], preferences = DEFAULT_SCANNER, onPreferencesChange, onUndo, canUndo = false, saving = false }: BarcodeScannerProps) => {
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>('');
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const [hasTorch, setHasTorch] = useState<boolean>(false);
-  const [scanMode, setScanMode] = useState<'single' | 'batch'>('single');
-  const [batchQuantity, setBatchQuantity] = useState<number>(6);
+  const scanMode = preferences.scanMode, batchQuantity = preferences.batchQuantity;
+  const setScanMode = (value: ScannerPreferences['scanMode']) => { void onPreferencesChange?.({ ...preferences, scanMode: value }); };
+  const setBatchQuantity = (value: number) => { void onPreferencesChange?.({ ...preferences, batchQuantity: value }); };
   const [manualCode, setManualCode] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
-  const lastScannedTimeRef = useRef<number>(0);
-  const lastScannedCodeRef = useRef<string>('');
+  const cooldown = useRef(new ScanCooldown());
+  const inFlight = useRef(false);
+  const freezeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paused = useRef(false);
+  const [quantityRequest, setQuantityRequest] = useState<{ code: string; correction: boolean } | null>(null);
+  const [zoneNotice, setZoneNotice] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(0);
   const mounted = useRef(false);
   const starting = useRef(false);
-  const currentScan = useRef({ onScan, scanMode, batchQuantity });
-  useEffect(() => { currentScan.current = { onScan, scanMode, batchQuantity }; }, [onScan, scanMode, batchQuantity]);
+  const currentScan = useRef({ onScan, preferences, saving, products });
+  useEffect(() => { currentScan.current = { onScan, preferences, saving, products }; }, [onScan, preferences, saving, products]);
+  useEffect(() => { if (!preferences.speechEnabled) stopSpeech(); }, [preferences.speechEnabled]);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      if (freezeTimer.current) clearTimeout(freezeTimer.current);
+      stopSpeech();
       const scanner = html5QrCodeRef.current;
       if (scanner?.isScanning) void scanner.stop().then(() => scanner.clear()).catch(() => {});
     };
@@ -91,15 +110,13 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
           height: Math.max(1, Math.min(160, Math.floor(height * .6)))
         }),
         aspectRatio: 1,
-      }, handleDetectedCode, () => {
-        if (Date.now() - lastScannedTimeRef.current > 800) lastScannedCodeRef.current = '';
-      });
+      }, (code) => { void handleDetectedCode(code); }, () => { /* Frames without a barcode are expected. */ });
       if (!mounted.current) {
         await scanner.stop();
         scanner.clear();
         return;
       }
-      lastScannedCodeRef.current = '';
+      paused.current = false;
       setIsScanning(true);
       try { setHasTorch(scanner.getRunningTrackCameraCapabilities().torchFeature().isSupported()); } catch { setHasTorch(false); }
     } catch {
@@ -115,6 +132,8 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
 
   const stopScanning = async () => {
     if (starting.current) return;
+    if (freezeTimer.current) clearTimeout(freezeTimer.current);
+    paused.current = false; inFlight.current = false;
     starting.current = true;
     setBusy(true);
     try {
@@ -141,38 +160,83 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
     }
   };
 
-  const handleDetectedCode = (code: string) => {
-    const trimmed = code.trim();
-    if (!trimmed) return;
-
-    const now = Date.now();
-    if (trimmed === lastScannedCodeRef.current) {
-      lastScannedTimeRef.current = now;
-      return;
+  const pauseCamera = () => {
+    const scanner = html5QrCodeRef.current;
+    if (scanner?.isScanning && !paused.current) {
+      try { scanner.pause(true); paused.current = true; }
+      catch { setErrorMessage('No se pudo congelar la cámara; el bloqueo de lecturas sigue activo.'); }
     }
-
-    lastScannedCodeRef.current = trimmed;
-    lastScannedTimeRef.current = now;
-
+  };
+  const resumeCamera = () => {
     if (!mounted.current) return;
+    const scanner = html5QrCodeRef.current;
+    if (paused.current && scanner?.isScanning) {
+      try { scanner.resume(); }
+      catch { setErrorMessage('Pulsa Detener y vuelve a activar la cámara para continuar.'); }
+    }
+    paused.current = false; inFlight.current = false;
+  };
+  const finishFeedback = (product: Product | void) => {
+    if (!mounted.current) return;
+    setFlash(value => value + 1);
+    if (product?.isUnregistered) soundService.playWarningBeep(); else soundService.playScanBeep();
+    try {
+      navigator.vibrate?.([100, 50, 80]);
+      if (product && currentScan.current.preferences.speechEnabled) speakCount(product.description, product.physicalStock, product.isUnregistered);
+    } catch { setErrorMessage('Conteo guardado. Este navegador no pudo emitir la confirmación de voz o vibración.'); }
+  };
+  const persistCount = async (code: string, quantity: number, mode: CountMode) => {
+    try {
+      const result = await currentScan.current.onScan(code, quantity, mode);
+      if (result === null) { if (mounted.current) setErrorMessage('No se guardó el conteo. Revisa el aviso y vuelve a intentarlo.'); return false; }
+      finishFeedback(result); return true;
+    } catch (error) {
+      if (mounted.current) setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el conteo.');
+      return false;
+    }
+  };
+  const handleDetectedCode = async (rawCode: string, correction = false) => {
+    const code = rawCode.trim();
+    if (!code || inFlight.current || currentScan.current.saving) return;
+    if (!correction && !cooldown.current.accept(code)) { setErrorMessage('Lectura repetida: espera 1.8 segundos antes de contar el mismo código.'); return; }
+    inFlight.current = true; setErrorMessage(null); pauseCamera();
     const current = currentScan.current;
-    const qty = current.scanMode === 'batch' ? current.batchQuantity : 1;
-    current.onScan(trimmed, qty);
-    setFlash(value => value + 1);
+    const product = current.products.find(p => p.code === code);
+    const zone = current.preferences.activeZoneDepartment;
+    setZoneNotice(zone && product && product.department !== zone ? `Este producto pertenece a ${product.department}. Estás trabajando en ${zone}.` : '');
+    if (current.preferences.scanMode === 'ask_quantity' || correction) { setQuantityRequest({ code, correction }); return; }
+    const success = await persistCount(code, current.preferences.scanMode === 'batch' ? current.preferences.batchQuantity : 1, 'add');
+    if (!success) cooldown.current.release(code);
+    if (mounted.current) freezeTimer.current = setTimeout(resumeCamera, 650);
   };
-
-  const handleManualSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!manualCode.trim()) return;
-    const qty = scanMode === 'batch' ? batchQuantity : 1;
-    soundService.unlock();
-    onScan(manualCode.trim(), qty);
-    setFlash(value => value + 1);
-    setManualCode('');
+  const handleManualSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!manualCode.trim() || inFlight.current || saving) return;
+    soundService.unlock(); void handleDetectedCode(manualCode); setManualCode('');
   };
+  const changeLastQuantity = async (quantity: number) => {
+    if (!lastScannedInfo || inFlight.current || saving) return;
+    inFlight.current = true; pauseCamera();
+    await persistCount(lastScannedInfo.code, quantity, 'set');
+    if (mounted.current) freezeTimer.current = setTimeout(resumeCamera, 650);
+  };
+  const departments = [...new Set(products.map(p => p.department))].sort();
+  const lastProduct = products.find(p => p.code === lastScannedInfo?.code);
+  const lastQuantity = lastProduct?.physicalStock ?? lastScannedInfo?.quantity ?? 0;
+  const difference = roundQuantity(lastQuantity - (lastProduct?.theoreticalStock ?? lastScannedInfo?.theoretical ?? 0));
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-xl mx-auto">
+    <div className={`scanner-shell flex flex-col gap-4 w-full max-w-xl mx-auto ${preferences.highVisibility ? 'scanner-large' : ''}`}>
+      <div className="scanner-tools">
+        <button className="secondary" disabled={saving} aria-pressed={preferences.speechEnabled} onClick={() => {
+          if (!('speechSynthesis' in window)) { setErrorMessage('Este navegador no admite voz sintetizada.'); return; }
+          void onPreferencesChange?.({ ...preferences, speechEnabled: !preferences.speechEnabled });
+        }}><Volume2 size={18} aria-hidden="true" /> Voz</button>
+        <button className="secondary" disabled={saving} aria-pressed={preferences.highVisibility} onClick={() => { void onPreferencesChange?.({ ...preferences, highVisibility: !preferences.highVisibility }); }}><Eye size={18} aria-hidden="true" /> Letra grande</button>
+        <label>Zona activa<select disabled={saving} value={preferences.activeZoneDepartment ?? ''} onChange={e => { void onPreferencesChange?.({ ...preferences, activeZoneDepartment: e.target.value || undefined }); }}><option value="">Todos</option>{departments.map(d => <option key={d}>{d}</option>)}</select></label>
+      </div>
+      {zoneNotice && <p role="status" className="message">{zoneNotice}</p>}
+      {quantityRequest && <QuantityKeypadModal code={quantityRequest.code} product={products.find(p => p.code === quantityRequest.code)} initialValue={quantityRequest.correction ? String(lastQuantity) : ''} onClose={() => { setQuantityRequest(null); resumeCamera(); }} onSave={async (quantity, mode) => { const saved = await persistCount(quantityRequest.code, quantity, mode); if (saved) { cooldown.current.release(quantityRequest.code); cooldown.current.accept(quantityRequest.code); } return saved; }} />}
       {/* Visor de Cámara con Retícula y Láser Dinámico */}
       <div className="relative bg-[#1A1A1A] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl min-h-[320px] flex flex-col items-center justify-center">
         {isScanning && <div className="scan-reticle" aria-hidden="true" />}
@@ -219,7 +283,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
               </button>
             )}
             <button
-              disabled={busy}
+              disabled={busy || saving}
               onClick={stopScanning}
               className="px-4 py-2 bg-[#710014] hover:bg-[#8e0019] text-[#F2F1ED] text-xs font-bold rounded-full backdrop-blur-md border border-white/20 shadow-lg cursor-pointer"
             >
@@ -233,7 +297,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
           <div className="absolute top-4 left-4 right-4 z-20 flex justify-center">
             <select
               aria-label="Seleccionar cámara"
-              disabled={busy}
+              disabled={busy || saving}
               value={selectedCamera}
               onChange={(e) => {
                 setSelectedCamera(e.target.value);
@@ -259,9 +323,9 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
       )}
 
       {/* Selector de Modo: Unidad (+1) vs Caja (+N) con diseño Pill redondo */}
-      <div className="grid grid-cols-2 gap-2 bg-[#202020] p-1.5 rounded-full border border-white/10 shadow-inner">
+      <div className="scanner-modes">
         <button
-          aria-pressed={scanMode === 'single'}
+          disabled={saving} aria-pressed={scanMode === 'single'}
           onClick={() => setScanMode('single')}
           className={`flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
             scanMode === 'single'
@@ -273,7 +337,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
           Modo Unidad (+1)
         </button>
         <button
-          aria-pressed={scanMode === 'batch'}
+          disabled={saving} aria-pressed={scanMode === 'batch'}
           onClick={() => setScanMode('batch')}
           className={`flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
             scanMode === 'batch'
@@ -284,6 +348,7 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
           <Layers className="w-4 h-4 stroke-[2.5]" />
           Modo Caja (+N)
         </button>
+        <button disabled={saving} aria-pressed={scanMode === 'ask_quantity'} onClick={() => setScanMode('ask_quantity')}><Star size={18} aria-hidden="true" /> Preguntar cantidad</button>
       </div>
 
       {/* Configuración de Caja / Paquete si está activo */}
@@ -318,49 +383,29 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo }: BarcodeScannerProps)
       )}
 
       {/* Tarjeta de Último Escaneo estilo Swatch Card */}
-      {lastScannedInfo && (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          className={`p-4 rounded-2xl border transition-all animate-card-pop ${
-            lastScannedInfo.isNew 
-              ? 'bg-[#262626] border-[#FF6E42]/50' 
-              : 'bg-[#202020] border-white/15'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <span className="text-xs font-mono font-bold text-[#B38F6F]">{lastScannedInfo.code}</span>
-              <h4 className="font-extrabold text-[#F2F1ED] text-base leading-snug mt-0.5">
-                {lastScannedInfo.description}
-              </h4>
-              {lastScannedInfo.isNew ? (
-                <span className="inline-block mt-2 text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-[#FF6E42]/20 text-[#FF6E42] border border-[#FF6E42]/40">
-                  ⚠ No registrado en eleventa
-                </span>
-              ) : (
-                <div className="flex items-center gap-3 mt-2 text-xs text-[#888888]">
-                  <span>eleventa: <strong className="text-[#F2F1ED]">{lastScannedInfo.theoretical}</strong></span>
-                  <span>Físico: <strong className="text-[#B38F6F] text-sm">{lastScannedInfo.quantity}</strong></span>
-                </div>
-              )}
-            </div>
-            <div className="text-right shrink-0">
-              <div className="text-3xl font-black text-[#F2F1ED] tracking-tight">
-                {lastScannedInfo.quantity}
-              </div>
-              <span className="text-[10px] uppercase font-extrabold tracking-widest text-[#B38F6F]">Físico</span>
-            </div>
-          </div>
+      {lastScannedInfo && <section className="last-scan-card" aria-label="Último producto contado">
+        <code>{lastScannedInfo.code}</code><h3>{lastProduct?.description ?? lastScannedInfo.description}</h3>
+        <p>eleventa: {lastProduct?.theoreticalStock ?? lastScannedInfo.theoretical} · Venta: ${(lastProduct?.price ?? 0).toFixed(2)}</p>
+        <div className="last-scan-controls">
+          <button disabled={saving || lastQuantity <= 0} className="secondary" aria-label="Restar una pieza al último producto" onClick={() => { void changeLastQuantity(Math.max(0, roundQuantity(lastQuantity - 1))); }}>−</button>
+          <button className="last-scan-number" disabled={saving} aria-label="Corregir cantidad del último producto" onClick={() => { void handleDetectedCode(lastScannedInfo.code, true); }}>{lastQuantity}</button>
+          <button disabled={saving || lastQuantity >= 1e9} className="primary" aria-label="Sumar una pieza al último producto" onClick={() => { void changeLastQuantity(roundQuantity(lastQuantity + 1)); }}>+</button>
         </div>
-      )}
+        <span className={`last-scan-status ${lastScannedInfo.isNew ? 'unknown' : difference < 0 ? 'missing' : difference > 0 ? 'surplus' : 'match'}`}>
+          {lastScannedInfo.isNew ? 'NO REGISTRADO EN ELEVENTA' : difference < 0 ? `↓ FALTAN ${Math.abs(difference)} PIEZAS` : difference > 0 ? `↑ SOBRAN ${difference} PIEZAS` : '✓ CUADRADO EXACTO'}
+        </span>
+        {onUndo && <button className="secondary scanner-undo" disabled={saving || !canUndo} onClick={async () => {
+          if (inFlight.current) return; inFlight.current = true; pauseCamera();
+          try { if (await onUndo()) { stopSpeech(); setErrorMessage(null); } else setErrorMessage('No se pudo deshacer el último conteo.'); }
+          finally { resumeCamera(); }
+        }}><Undo2 size={18} aria-hidden="true" /> Deshacer último conteo</button>}
+      </section>}
 
       {/* Entrada manual con buscador redondo */}
       <form onSubmit={handleManualSubmit} className="relative flex items-center">
         <input
           type="text"
-          aria-label="Código del producto"
+          disabled={saving} aria-label="Código del producto"
           autoComplete="off"
           name="barcode"
           spellCheck={false}

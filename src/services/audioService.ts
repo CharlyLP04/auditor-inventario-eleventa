@@ -114,3 +114,13 @@ class AudioService {
 }
 
 export const soundService = new AudioService();
+
+// Optional browser feedback must never determine whether the inventory is saved.
+export function speakCount(description: string, quantity: number, unregistered = false) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(unregistered ? 'Producto no registrado en eleventa.' : `${description}: ${quantity.toLocaleString('es-MX', { maximumFractionDigits: 6 })} piezas contadas.`);
+  utterance.lang = 'es-MX'; utterance.rate = .95;
+  window.speechSynthesis.speak(utterance);
+}
+export function stopSpeech() { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }

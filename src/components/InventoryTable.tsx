@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ProductEditor } from './ProductEditor';
 import type { Product, ProductFilter } from '../types';
 import { productStatus, roundQuantity, validQuantity } from '../services/auditState';
 
@@ -25,11 +26,16 @@ export function InventoryTable({
   products,
   onUpdateQuantity,
   readOnly = false,
+  isAdmin = false,
+  onUpdateProduct,
 }: {
   products: Product[];
   readOnly?: boolean;
-  onUpdateQuantity: (code: string, quantity: number) => void;
+  isAdmin?: boolean;
+  onUpdateProduct?: (code: string, patch: Partial<Pick<Product, 'department' | 'cost' | 'price'>>) => Promise<boolean>;
+  onUpdateQuantity: (code: string, quantity: number) => void | Promise<boolean>;
 }) {
+  const [metadataProduct, setMetadataProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
   const [filter, setFilter] = useState<ProductFilter>('all');
@@ -59,19 +65,20 @@ export function InventoryTable({
     setEditing(null);
   };
 
-  const save = (p: Product) => {
+  const save = async (p: Product) => {
     const value = draft.trim() ? Number(draft) : NaN;
     if (!validQuantity(value)) {
       setError('Escribe una cantidad entre 0 y 1,000,000,000.');
       return;
     }
-    onUpdateQuantity(p.code, value);
+    if (await onUpdateQuantity(p.code, value) === false) { setError('No se guardó. Revisa el aviso de la auditoría.'); return; }
     setEditing(null);
     setError('');
   };
 
   return (
     <section aria-label="Productos del inventario">
+      {metadataProduct && onUpdateProduct && <ProductEditor product={metadataProduct} departments={departments} isAdmin={isAdmin} onSave={onUpdateProduct} onClose={() => setMetadataProduct(null)} />}
       {/* Barra de Búsqueda y Filtros con estilo Swatch */}
       <div className="inventory-toolbar">
         <label>
@@ -140,6 +147,7 @@ export function InventoryTable({
                 <code>{p.code}</code>
                 <h3>{p.description}</h3>
                 <span>{p.department}</span>
+                {onUpdateProduct && <button disabled={readOnly} className="product-edit-button" onClick={() => setMetadataProduct(p)}>{isAdmin ? "Editar producto" : "Cambiar departamento"}</button>}
               </div>
 
               <div className="stock-cell">

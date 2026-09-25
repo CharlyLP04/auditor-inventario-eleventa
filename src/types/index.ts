@@ -58,4 +58,13 @@ export interface AuditorProfile { serviceName: string; auditorName: string; lett
 export interface WorkspaceData {
   companies: Company[]; audits: AuditRecord[]; activeAuditId: string | null; activeCompanyId: string | null;
   profile: AuditorProfile; revision: number;
+  security?: SecuritySettings; scannerPreferences?: ScannerPreferences;
 }
+
+export type UserRole = 'admin' | 'auditor';
+export interface SecuritySettings { adminPin: string; }
+export interface ScannerPreferences {
+  highVisibility: boolean; speechEnabled: boolean; cooldownMs: number;
+  scanMode: 'single' | 'batch' | 'ask_quantity'; batchQuantity: number; activeZoneDepartment?: string;
+}
+export type CountMode = 'add' | 'set';

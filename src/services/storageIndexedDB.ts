@@ -1,8 +1,9 @@
 import type { WorkspaceData, Company, AuditRecord } from '../types';
+import { DEFAULT_SCANNER, validatePin, validPreferences } from './scannerState';
 import { calculateStats, validateProducts } from './auditState';
 export function createId() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''); }
 export const LEGACY_KEY = 'auditor_eleventa_products_v1';
-const initial = (): WorkspaceData => ({ companies: [], audits: [], activeAuditId: null, activeCompanyId: null, revision: 0,
+const initial = (): WorkspaceData => ({ companies: [], audits: [], activeAuditId: null, activeCompanyId: null, revision: 0, security: { adminPin: '1234' }, scannerPreferences: { ...DEFAULT_SCANNER },
   profile: { serviceName: 'Servicio de auditoría de inventarios', auditorName: '', letterhead: '' } });
 let connection: Promise<IDBDatabase> | undefined;
 function open() {
@@ -49,7 +50,7 @@ export async function writeWorkspace(next: WorkspaceData, expected: number, repl
       const oldAudits = new Map(previous?.audits.map(a => [a.id, a]));
       next.companies.forEach(c => { if (replace || oldCompanies.get(c.id) !== c) companies.put(c); });
       next.audits.forEach(a => { if (replace || oldAudits.get(a.id) !== a) audits.put(a); });
-      settings.put({ activeCompanyId: next.activeCompanyId, activeAuditId: next.activeAuditId, profile: next.profile, revision: expected + 1 }, 'workspace');
+      settings.put({ activeCompanyId: next.activeCompanyId, activeAuditId: next.activeAuditId, profile: next.profile, security: next.security ?? { adminPin: '1234' }, scannerPreferences: next.scannerPreferences ?? { ...DEFAULT_SCANNER }, revision: expected + 1 }, 'workspace');
     };
     tx.oncomplete = () => resolve({ ...next, revision: expected + 1 });
     tx.onabort = () => reject(conflict ? new Error('Otra pestaña cambió los datos. Descarga tu respaldo y recarga antes de continuar.') : failure(tx));
@@ -67,39 +68,14 @@ export async function recoverWorkspace() {
   const current = await readWorkspace();
   return current.revision ? current : writeWorkspace(current, 0);
 }
-const DEMO_CODES = new Set([
-  '7501055365449', '7501000111459', '7501008041239', '7501020515152',
-  '7501001400279', '7501030467558', '7501055304745', '7501030491027'
-]);
-const isDemoProducts = (products: unknown) =>
-  Array.isArray(products) && products.length > 0 && products.every((p: unknown) => Boolean(p) && typeof p === 'object' && DEMO_CODES.has((p as Record<string, unknown>).code as string));
-
 async function migrateWorkspace() {
   let data = await readWorkspace();
-  const demoCompany = data.companies.find(c => c.name === 'Empresa del conteo anterior');
-  if (demoCompany) {
-    const demoAudits = data.audits.filter(a => a.companyId === demoCompany.id);
-    const hasOnlyDemo = demoAudits.every(a => !a.products.length || isDemoProducts(a.products));
-    if (hasOnlyDemo) {
-      data = {
-        ...data,
-        companies: data.companies.filter(c => c.id !== demoCompany.id),
-        audits: data.audits.filter(a => a.companyId !== demoCompany.id),
-        activeCompanyId: data.activeCompanyId === demoCompany.id ? null : data.activeCompanyId,
-        activeAuditId: demoAudits.some(a => a.id === data.activeAuditId) ? null : data.activeAuditId,
-      };
-      localStorage.removeItem(LEGACY_KEY);
-      return writeWorkspace(data, data.revision, true);
-    }
-  }
   if (data.revision !== 0) return data;
   const raw = localStorage.getItem(LEGACY_KEY);
   if (raw) {
-    let products: unknown;
-    try { products = JSON.parse(raw); } catch { products = []; }
-    if (isDemoProducts(products)) {
-      localStorage.removeItem(LEGACY_KEY);
-    } else if (validateProducts(products) && products.length) {
+    const products: unknown = JSON.parse(raw);
+    if (!validateProducts(products)) throw new Error('El conteo anterior no es válido. Se conserva intacto; descarga un respaldo antes de continuar.');
+    if (products.length) {
       const company: Company = { id: createId(), name: 'Empresa del conteo anterior', createdAt: new Date().toISOString() };
       const today = new Date();
       const audit = newAudit(company.id, `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
@@ -118,6 +94,8 @@ export function parseMasterBackup(raw: string): WorkspaceData {
   if (!object(root) || root.format !== 'auditor-eleventa-master' || root.version !== 1 || !object(root.data)) throw new Error('No es un respaldo maestro compatible.');
   const d = root.data;
   if (!Array.isArray(d.companies) || !Array.isArray(d.audits) || !object(d.profile)) throw new Error('Respaldo incompleto.');
+  if (d.security !== undefined && (!object(d.security) || !validatePin(d.security.adminPin))) throw new Error('Configuración de PIN inválida.');
+  if (d.scannerPreferences !== undefined && !validPreferences(d.scannerPreferences)) throw new Error('Preferencias del escáner inválidas.');
   const ids = new Set<string>(), auditIds = new Set<string>(), periods = new Set<string>();
   for (const c of d.companies) {
     if (!object(c) || !text(c.id) || !c.id || ids.has(c.id as string) || !text(c.name) || !(c.name as string).trim() || !date(c.createdAt)
@@ -139,5 +117,5 @@ export function parseMasterBackup(raw: string): WorkspaceData {
   if (d.activeAuditId !== null && d.audits.find(a => a.id === d.activeAuditId)?.companyId !== d.activeCompanyId) throw new Error('La auditoría activa no pertenece a la empresa seleccionada.');
   for (const k of ['serviceName', 'auditorName', 'letterhead']) if (!text(d.profile[k])) throw new Error('Membrete inválido.');
   if (d.profile.logo !== undefined && (typeof d.profile.logo !== 'string' || d.profile.logo.length > 1500000 || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(d.profile.logo))) throw new Error('Logotipo inválido.');
-  return { companies: d.companies as Company[], audits: d.audits as AuditRecord[], activeAuditId: d.activeAuditId as string | null, activeCompanyId: d.activeCompanyId as string | null, profile: d.profile as unknown as WorkspaceData['profile'], revision: 0 };
+  return { companies: d.companies as Company[], audits: d.audits as AuditRecord[], activeAuditId: d.activeAuditId as string | null, activeCompanyId: d.activeCompanyId as string | null, profile: d.profile as unknown as WorkspaceData['profile'], revision: 0, scannerPreferences: validPreferences(d.scannerPreferences) ? d.scannerPreferences : { ...DEFAULT_SCANNER } };
 }

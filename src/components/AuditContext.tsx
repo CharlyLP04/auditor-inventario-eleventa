@@ -9,9 +9,10 @@ interface Props {
   pendingCount: number;
   updateAudit: (id: string, patch: Pick<AuditRecord, 'status' | 'notes'>) => Promise<boolean>;
   onFinish?: () => void;
+  canManage?: boolean;
 }
 
-export function AuditContext({ audit, companyName, busy, pendingCount, updateAudit, onFinish }: Props) {
+export function AuditContext({ audit, companyName, busy, pendingCount, updateAudit, onFinish, canManage = true }: Props) {
   const [draft, setDraft] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [open, setOpen] = useState(false);
@@ -32,7 +33,7 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
     <label className={`audit-status-pill status-${audit.status}`}>
       <span className="audit-status-dot" aria-hidden="true" />
       <span className="sr-only">Estado de auditoría</span>
-      <select disabled={busy || dirty} title={dirty ? 'Guarda o descarta las notas antes de cambiar el estado' : 'Cambiar estado de auditoría'} value={audit.status} onChange={async e => {
+      <select disabled={busy || dirty || !canManage} title={dirty ? 'Guarda o descarta las notas antes de cambiar el estado' : 'Cambiar estado de auditoría'} value={audit.status} onChange={async e => {
         const status = e.target.value as AuditRecord['status'];
         if (status !== 'in_progress' && !window.confirm(`¿Finalizar esta auditoría? Quedan ${pendingCount} productos pendientes. El conteo quedará en modo lectura y podrás reabrirlo.`)) return;
         await updateAudit(audit.id, { status, notes: audit.notes });
