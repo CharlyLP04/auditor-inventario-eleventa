@@ -18,17 +18,17 @@ function numeric(value: unknown, label: string, negative = false): number {
 export function parseEleventaExcel(fileBuffer: ArrayBuffer): { products: Product[]; errors: string[] } {
   const bytes = new Uint8Array(fileBuffer);
   const prefix = bytes.subarray(0, 512);
-  // Algunos .xls de eleventa son TSV en Windows-1252, no libros binarios.
-  // Leer el texto explícitamente conserva acentos y códigos con ceros iniciales.
-  const isTabSeparatedText = prefix.includes(9) && !prefix.includes(0)
+  // Algunos .xls de eleventa son TSV en Windows-1252 y muchos CSV son UTF-8 sin BOM, no libros binarios.
+  // Decodificar el texto explícitamente conserva acentos y códigos con ceros iniciales.
+  const isText = !prefix.includes(0)
     && !(prefix[0] === 0x50 && prefix[1] === 0x4b)
     && !(prefix[0] === 0xd0 && prefix[1] === 0xcf);
   let workbook: XLSX.WorkBook;
-  if (isTabSeparatedText) {
+  if (isText) {
     let text: string;
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
     catch { text = new TextDecoder('windows-1252').decode(bytes); }
-    workbook = XLSX.read(text, { type: 'string', FS: '\t', raw: true, cellText: true, sheetRows: 20022 });
+    workbook = XLSX.read(text, { type: 'string', ...(prefix.includes(9) ? { FS: '\t' } : {}), raw: true, cellText: true, sheetRows: 20022 });
   } else {
     workbook = XLSX.read(fileBuffer, { type: 'array', raw: true, cellText: true, sheetRows: 20022 });
   }

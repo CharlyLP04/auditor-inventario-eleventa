@@ -58,7 +58,7 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
   // HOJA 1: Formato listo para Importar / Ajustar en eleventa
   const eleventaAjusteRows = products.filter(p => isCounted(p) && !p.isUnregistered).map(p => ({
     'Código': p.code,
-    'Descripción': p.description,
+    'Descripción': p.sourceDescription ?? p.description,
     'Existencia': p.physicalStock,
     'Costo': p.cost,
     'Precio Venta': p.price,

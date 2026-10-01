@@ -37,6 +37,7 @@ export function validateProducts(value: unknown): value is Product[] {
       && (p.counted === undefined || typeof p.counted === 'boolean')
       && (p.isUnregistered === undefined || typeof p.isUnregistered === 'boolean')
       && (p.sourceDescription === undefined || typeof p.sourceDescription === 'string')
+      && (p.unitType === undefined || p.unitType === 'unidad' || p.unitType === 'granel')
       && (p.wholesalePrice === undefined || validQuantity(p.wholesalePrice))
       && (p.minStock === undefined || validQuantity(p.minStock))
       && (p.lastScannedAt === undefined || typeof p.lastScannedAt === 'string');
