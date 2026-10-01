@@ -6,7 +6,6 @@ import type { PreparedDownload } from '../services/fileDownload';
 import { prepareDownload, startDownload, releaseDownload } from '../services/fileDownload';
 import { applyCount, revertCount, requireAdmin, validatePin, validPreferences, DEFAULT_SCANNER } from '../services/scannerState';
 import type { CountUndo } from '../services/scannerState';
-export const STORAGE_KEY = LEGACY_KEY;
 export function useAuditStore() {
   const [role, setRole] = useState<UserRole>('auditor');
   const roleRef = useRef<UserRole>('auditor');

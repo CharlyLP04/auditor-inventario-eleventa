@@ -25,6 +25,3 @@ certs/
 *.njsproj
 *.sln
 *.sw?
-
-# Local audit output
-tests/browser-results.json

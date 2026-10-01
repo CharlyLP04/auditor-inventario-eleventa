@@ -34,6 +34,6 @@ El botón **Respaldo** descarga un JSON. Puedes restaurarlo desde Cargar archivo
 - `npm start`: servir `dist` con PWA y QR.
 - `npm run lint`: análisis de código.
 - `npm test`: pruebas de importación, conteo, validación y exportación.
-- `node tests/browser-server.mjs`: servidor de pruebas en `http://localhost:5183/__tests.html`. Pulsa Ejecutar pruebas; usa datos sintéticos y otro origen de almacenamiento.
+- `node tests/field-browser-server.mjs`: verificación de campo en `http://localhost:5191/__field.html` (requiere `npm run build`). Pulsa Ejecutar; usa datos sintéticos en otro origen de almacenamiento y borra su base de pruebas al iniciar.
 
 Las pruebas de navegador no sustituyen probar una cámara física, una linterna, una instalación real en iOS/Android o la importación en una instalación real de eleventa.
