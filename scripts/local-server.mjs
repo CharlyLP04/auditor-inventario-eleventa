@@ -1,30 +1,15 @@
 import http from 'node:http';
 import https from 'node:https';
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { resolve, relative, sep, extname } from 'node:path';
+import { readFileSync, statSync, existsSync } from 'node:fs';
+import { resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
-import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { terminalQr } from './terminal-qr.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.AUDITOR_PORT || 5173);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Puerto inválido');
-if (!existsSync(resolve(root, 'index.html'))) {
-  console.error('Falta la aplicación compilada. Abre Iniciar-Auditor.bat.');
-  process.exit(1);
-}
-const list = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-  const path = resolve(directory, entry.name);
-  return entry.isDirectory() ? list(path) : [path];
-});
-const files = list(root).sort();
-const hash = createHash('sha256');
-for (const file of files) { hash.update(relative(root, file)); hash.update(readFileSync(file)); }
-const version = hash.digest('hex').slice(0, 16);
-const assets = files.filter(file => relative(root, file).startsWith(`assets${sep}`)).map(file => '/' + relative(root, file).split(sep).join('/'));
-const worker = readFileSync(resolve(root, 'sw.js'), 'utf8').replace('__BUILD_ID__', version).replace('/*__PRECACHE__*/ []', JSON.stringify(assets));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const handler = (request, response) => {
   if (!['GET', 'HEAD'].includes(request.method)) { response.writeHead(405, { Allow: 'GET, HEAD' }); response.end(); return; }
@@ -33,7 +18,7 @@ const handler = (request, response) => {
     const file = resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
     const rel = relative(root, file);
     if (rel.startsWith('..') || rel.includes(':') || !existsSync(file) || !statSync(file).isFile()) { response.writeHead(404); response.end('No encontrado'); return; }
-    const body = pathname === '/sw.js' ? Buffer.from(worker) : readFileSync(file);
+    const body = readFileSync(file);
     response.writeHead(200, {
       'Content-Type': mime[extname(file)] || 'application/octet-stream',
       'Content-Length': body.length,
@@ -46,6 +31,10 @@ const handler = (request, response) => {
 };
 export { handler };
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (!existsSync(resolve(root, 'index.html'))) {
+  console.error('Falta la aplicación compilada. Abre Iniciar-Auditor.bat.');
+  process.exit(1);
+}
 // Optional locally supplied certificates; no automatic changes to system trust.
 const certPath = process.env.AUDITOR_CERT_FILE;
 const keyPath = process.env.AUDITOR_KEY_FILE;

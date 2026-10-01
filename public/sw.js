@@ -1,8 +1,8 @@
-// The local server supplies a cache version and the built asset list at startup.
+// The build (scripts/sw-manifest.mjs) supplies a cache version and the list of built files.
 const CACHE = 'auditor-shell-__BUILD_ID__';
 const ASSETS = /*__PRECACHE__*/ [];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png', ...ASSETS])));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll([...new Set(['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png', ...ASSETS])])));
   // A new version waits until all existing app windows have closed, protecting active counts.
 });
 self.addEventListener('activate', event => {
