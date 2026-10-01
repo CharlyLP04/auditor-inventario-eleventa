@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Download,
   FileSpreadsheet,
@@ -43,12 +44,25 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [showAllInPreview, setShowAllInPreview] = useState(false);
   const [exportError, setExportError] = useState('');
   const [download, setDownload] = useState<PreparedDownload | null>(null);
+  // El dictamen completo puede tener 20,000 filas: solo se genera mientras el navegador imprime.
+  const [printing, setPrinting] = useState(false);
   const downloadRef = useRef<PreparedDownload | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const adjustmentProducts = products.filter(p => isCounted(p) && !p.isUnregistered);
 
   useEffect(() => () => {
     if (downloadRef.current) releaseDownload(downloadRef.current);
+  }, []);
+
+  useEffect(() => {
+    const before = () => flushSync(() => setPrinting(true));
+    const after = () => setPrinting(false);
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', after);
+    return () => {
+      window.removeEventListener('beforeprint', before);
+      window.removeEventListener('afterprint', after);
+    };
   }, []);
 
   useEffect(() => {
@@ -87,6 +101,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   const handlePrint = () => {
+    flushSync(() => setPrinting(true));
     window.print();
   };
 
@@ -237,7 +252,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="dictamen-notes-box">
             <p className="preserve-lines">
               {audit?.notes?.trim() ||
-                'Sin observaciones adicionales registradas. El conteo físico fue concluido con los protocolos vigentes de validación en tienda.'}
+                (audit?.status === 'in_progress'
+                  ? 'Sin observaciones registradas a la fecha. Dictamen preliminar: el conteo físico sigue en curso.'
+                  : 'Sin observaciones adicionales registradas. El conteo físico fue concluido con los protocolos vigentes de validación en tienda.')}
             </p>
           </div>
         </section>
@@ -603,9 +620,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       )}
 
       {/* Sección exclusiva para impresión nativa (window.print()) */}
-      <section className="print-report">
-        {renderDocumentContent(false)}
-      </section>
+      {printing && (
+        <section className="print-report">
+          {renderDocumentContent(false)}
+        </section>
+      )}
     </dialog>
   );
 };

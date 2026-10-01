@@ -129,7 +129,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Faltantes / Merma en Crimson Depth */}
         <div className="bg-gradient-to-br from-[#710014] to-[#50000e] border border-white/15 rounded-[28px] p-6 shadow-2xl flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[#F2F1ED]/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[#F2F1ED]/80">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-black/25 flex items-center justify-center">
                 <TrendingDown className="w-4 h-4 text-[#F2F1ED]" />
@@ -152,7 +152,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
 
         {/* Sobrantes en Petrol Blue */}
         <div className="bg-gradient-to-br from-[#004E72] to-[#00344d] border border-white/15 rounded-[28px] p-6 shadow-2xl flex flex-col justify-between">
-          <div className="flex items-center justify-between text-[#F2F1ED]/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[#F2F1ED]/80">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-black/25 flex items-center justify-center">
                 <TrendingUp className="w-4 h-4 text-[#F2F1ED]" />

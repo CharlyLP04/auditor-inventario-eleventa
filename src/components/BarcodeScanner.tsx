@@ -35,7 +35,26 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo, products = [], prefere
   const [hasTorch, setHasTorch] = useState<boolean>(false);
   const scanMode = preferences.scanMode, batchQuantity = preferences.batchQuantity;
   const setScanMode = (value: ScannerPreferences['scanMode']) => { void onPreferencesChange?.({ ...preferences, scanMode: value }); };
-  const setBatchQuantity = (value: number) => { void onPreferencesChange?.({ ...preferences, batchQuantity: value }); };
+  // El campo puede quedar vacío mientras se escribe; cada valor válido se guarda en orden, sin perder teclas.
+  const [batchDraft, setBatchDraft] = useState<string | null>(null);
+  const batchSaves = useRef<{ running: boolean; next: number | null }>({ running: false, next: null });
+  const setBatchQuantity = async (value: number) => {
+    const queue = batchSaves.current;
+    queue.next = value;
+    if (queue.running) return;
+    queue.running = true;
+    try {
+      while (queue.next !== null) {
+        const next = queue.next; queue.next = null;
+        await onPreferencesChange?.({ ...currentScan.current.preferences, batchQuantity: next });
+      }
+    } finally { queue.running = false; }
+  };
+  const editBatchQuantity = (raw: string) => {
+    setBatchDraft(raw);
+    const value = Number(raw);
+    if (raw.trim() && Number.isInteger(value) && value >= 1 && value <= 999999) void setBatchQuantity(value);
+  };
   const [manualCode, setManualCode] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -359,7 +378,8 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo, products = [], prefere
             {[6, 12, 24].map((qty) => (
               <button
                 key={qty}
-                onClick={() => setBatchQuantity(qty)}
+                disabled={saving}
+                onClick={() => { setBatchDraft(null); void setBatchQuantity(qty); }}
                 className={`px-3 py-1.5 text-xs rounded-full font-black transition-all cursor-pointer ${
                   batchQuantity === qty
                     ? 'bg-[#FF6E42] text-[#161616] shadow-md'
@@ -374,8 +394,10 @@ export const BarcodeScanner = ({ onScan, lastScannedInfo, products = [], prefere
               aria-label="Unidades por caja"
               min="1"
               max="999999"
-              value={batchQuantity}
-              onChange={(e) => setBatchQuantity(Math.min(999999, Math.max(1, parseInt(e.target.value) || 1)))}
+              step="1"
+              value={batchDraft ?? batchQuantity}
+              onChange={(e) => editBatchQuantity(e.target.value)}
+              onBlur={() => setBatchDraft(null)}
               className="w-16 text-center bg-[#161616] border border-[#FF6E42]/60 rounded-full py-1.5 text-sm font-black text-[#F2F1ED] focus:outline-none"
             />
           </div>
