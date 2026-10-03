@@ -18,12 +18,14 @@ La versión compilada almacena los recursos para abrirse sin conexión después 
 
 ## Importación, conteo y exportación
 
-1. Carga un Excel o CSV con Código, Descripción y Existencia. Se reconocen variantes explícitas de esos encabezados, Costo, Precio Venta, Departamento y Tipo.
-2. El límite es 10 MB / 20,000 productos. Códigos duplicados, faltantes o datos numéricos inválidos rechazan la importación completa, mostrando las filas a corregir.
+1. Carga un Excel (.xlsx/.xls), CSV o TSV (UTF-8 o Windows-1252). Se requieren Código, Descripción y Existencia; se reconocen variantes de encabezados (por ejemplo, Precio Público, Costo Promedio, Clave interna, Depto) en cualquier orden, aunque haya filas de título arriba del encabezado.
+2. Antes de reemplazar el catálogo se muestra una vista previa: columnas detectadas (puedes reasignarlas a mano), primeros productos, columnas que no se usarán, avisos si faltan precio de venta o costo, y cada fila con problemas (código vacío o duplicado, número inválido) con su motivo. Si hay filas con problemas debes aceptar explícitamente que se omitan; quedan registradas en el balance. Límite: 10 MB / 20,000 productos. Los números deben usar punto decimal (1,234.50); una coma decimal ambigua (1,25) se rechaza en lugar de adivinarse. No se interpretan fechas.
 3. Conserva como texto los códigos con ceros iniciales o más de 15 dígitos. Una precisión perdida previamente por Excel no puede recuperarse automáticamente.
-4. Cuenta por cámara, lector USB/Bluetooth, teclado o edición manual. Un cero confirmado significa faltante total; un producto pendiente no es una merma confirmada.
-5. Exporta el Excel o imprime el reporte. La hoja de ajuste incluye solo productos contados y registrados. Los no registrados permanecen en el reporte para revisión; no se exportan con costo/precio cero a la hoja de ajuste.
-6. Revisa la correspondencia de columnas y las opciones de importación de tu versión de eleventa antes de aplicar cambios. Esta aplicación no accede a su base de datos ni aplica ajustes automáticamente.
+4. Cuenta por cámara, lector USB/Bluetooth, teclado o edición manual. Un cero confirmado significa faltante total; un producto pendiente no es una merma confirmada. Cada lectura muestra un estado con color, icono y texto: verde (en la auditoría), rojo (no encontrado) o amarillo (advertencia, por ejemplo otro departamento).
+5. El buscador del escáner localiza por código de barras, clave interna o palabras de la descripción (sin acentos y en cualquier orden). Escribir una descripción nunca crea productos.
+6. Un código que no está en el catálogo no se cuenta solo: puedes registrarlo como **no encontrado** con nombre, nota, cantidad y departamento. Después puedes editarlo, vincularlo al producto correcto del catálogo o excluirlo del conteo (no se borra y se puede reincorporar). Cada acción queda en la bitácora de la auditoría.
+7. Exporta el Excel o imprime el reporte. El balance y el dictamen valoran a precio de venta; el costo se muestra como referencia. La hoja de ajuste incluye solo productos contados y registrados. Los no registrados permanecen en el reporte para revisión; no se exportan con costo/precio cero a la hoja de ajuste.
+8. Revisa la correspondencia de columnas y las opciones de importación de tu versión de eleventa antes de aplicar cambios. Esta aplicación no accede a su base de datos ni aplica ajustes automáticamente.
 
 El botón **Respaldo** descarga un JSON. Puedes restaurarlo desde Cargar archivo para continuar los conteos en este u otro equipo. PC y celular **no se sincronizan**; cambiar de dirección o navegador cambia el almacenamiento. El programa avisa si el almacenamiento está lleno o los datos guardados están dañados y evita sobrescribir silenciosamente esos datos.
 
@@ -33,7 +35,7 @@ El botón **Respaldo** descarga un JSON. Puedes restaurarlo desde Cargar archivo
 - `npm run build`: TypeScript y compilación de producción.
 - `npm start`: servir `dist` con PWA y QR.
 - `npm run lint`: análisis de código.
-- `npm test`: pruebas de importación, conteo, validación y exportación.
+- `npm test`: pruebas de importación, búsqueda, no encontrados, conteo, validación, exportación y cabeceras de seguridad.
 - `node tests/field-browser-server.mjs`: verificación de campo en `http://localhost:5191/__field.html` (requiere `npm run build`). Pulsa Ejecutar; usa datos sintéticos en otro origen de almacenamiento y borra su base de pruebas al iniciar.
 
 Las pruebas de navegador no sustituyen probar una cámara física, una linterna, una instalación real en iOS/Android o la importación en una instalación real de eleventa.

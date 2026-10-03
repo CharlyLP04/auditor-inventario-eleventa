@@ -161,6 +161,11 @@ Severidad: Crítico · Alto · Medio · Bajo. P = probabilidad estimada.
 
 ### Accesibilidad e identidad visual
 
+**H-22 · Medio · Comprobado (encontrado durante la verificación visual).** En el teléfono, la cabecera fija tapa casi un tercio de la pantalla.
+- **Evidencia:** captura a 375×812 px: la cabecera fija (empresa, rol y respaldo) ocupa unos 255 px y es semitransparente sobre el panel del escáner.
+- **Impacto:** menos espacio para escanear y registrar; el contenido queda tapado.
+- **Recomendación:** en móvil, que la cabecera se desplace con el contenido.
+
 **H-21 · Bajo · Comprobado.** Contraste insuficiente en el texto de ayuda.
 - **Evidencia:** el placeholder `#777777` sobre `#202020` da un contraste aproximado de 4.0:1, menor a 4.5:1. Hay etiquetas de 10 px en el balance.
 - El texto secundario `#888888` sobre `#161616` sí pasa (≈5.1:1). Los estados de inventario ya combinan texto, símbolo y color (✓ ↓ ↑ ⚠), lo cual es correcto.
