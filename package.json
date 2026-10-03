@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview --configLoader native",
     "test": "node --import ./tests/register.mjs --test --test-isolation=none tests/*.test.mjs",
-    "start": "node scripts/local-server.mjs"
+    "start": "node scripts/local-server.mjs",
+    "test:cloud": "firebase emulators:exec --only firestore,auth --project demo-auditor \"node --import ./tests/register.mjs --test --test-concurrency=1 tests/rules.emulator.mjs tests/sync.emulator.mjs\""
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

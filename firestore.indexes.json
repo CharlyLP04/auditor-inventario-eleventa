@@ -1,0 +1,30 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "counts",
+      "fieldPath": "q",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "counts",
+      "fieldPath": "n",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "counts",
+      "fieldPath": "u",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "catalog",
+      "fieldPath": "products",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "audits",
+      "fieldPath": "importReport",
+      "indexes": []
+    }
+  ]
+}

@@ -25,3 +25,9 @@ certs/
 *.njsproj
 *.sln
 *.sw?
+
+# Firebase
+.firebase/
+.env
+.env.*
+!.env.example

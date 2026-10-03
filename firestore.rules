@@ -1,0 +1,113 @@
+rules_version = '2';
+// Reglas de la auditoría compartida. La interfaz no es la frontera de seguridad: estas reglas sí.
+// Diseño: docs/diseno/colaboracion-multidispositivo.md · Pruebas: tests/rules.emulator.mjs
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function memberDoc() { return get(/databases/$(database)/documents/members/$(request.auth.uid)); }
+    function isMember() { return signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid)) && memberDoc().data.active == true; }
+    function isAdmin() { return isMember() && memberDoc().data.role == 'admin'; }
+    function auditData(auditId) { return get(/databases/$(database)/documents/audits/$(auditId)).data; }
+    function inProgress(auditId) { return auditData(auditId).status == 'in_progress'; }
+    function text(value, max) { return value is string && value.size() <= max; }
+    function optionalText(data, key, max) { return !(key in data) || data[key] == null || text(data[key], max); }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function stamped() { return request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time; }
+
+    // Miembros: solo un administrador da acceso. Nadie se agrega a sí mismo (el primer administrador se crea en la consola).
+    match /members/{uid} {
+      allow read: if isMember() || (signedIn() && request.auth.uid == uid);
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'active', 'updatedBy', 'updatedAt'])
+        && text(request.resource.data.name, 200) && request.resource.data.name.size() > 0 && optionalText(request.resource.data, 'email', 320)
+        && request.resource.data.role in ['admin', 'auditor'] && request.resource.data.active is bool && stamped()
+        // Un administrador no puede quitarse a sí mismo el acceso: evita quedarse sin administradores.
+        && (uid != request.auth.uid || (request.resource.data.role == 'admin' && request.resource.data.active == true));
+      allow delete: if false;
+    }
+
+    match /companies/{companyId} {
+      allow read: if isMember();
+      allow create, update: if isAdmin() && text(request.resource.data.name, 200) && request.resource.data.name.size() > 0;
+      allow delete: if false;
+    }
+
+    match /settings/{docId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    match /audits/{auditId} {
+      allow read: if isMember();
+      allow create: if isAdmin() && request.resource.data.status == 'in_progress' && request.resource.data.createdBy == request.auth.uid
+        && text(request.resource.data.companyId, 200) && request.resource.data.period.matches('^[0-9]{4}-(0[1-9]|1[0-2])$');
+      // Solo un administrador cambia estado, catálogo o datos; cualquier miembro puede escribir notas mientras está en curso.
+      allow update: if isAdmin()
+        || (isMember() && resource.data.status == 'in_progress' && changed().hasOnly(['notes', 'updatedBy', 'updatedAt']) && text(request.resource.data.notes, 10000) && stamped());
+      allow delete: if false;
+
+      match /catalog/{chunk} {
+        allow read: if isMember();
+        allow write: if isAdmin();
+      }
+
+      // Contadores compartidos: solo cambian q (total), n (capturas) y u (capturas por persona), siempre con increment
+      // desde el cliente y en el mismo lote que su captura. La consistencia se puede verificar recalculando desde captures.
+      match /counts/{bucket} {
+        allow read: if isMember();
+        allow create: if isAdmin();
+        allow update: if isMember() && inProgress(auditId) && changed().hasOnly(['q', 'n', 'u']);
+        allow delete: if false;
+      }
+
+      // Historial inmutable: cada captura la crea su autor y nadie la puede editar ni borrar (una corrección es otra captura).
+      match /captures/{captureId} {
+        allow read: if isMember();
+        allow create: if isMember() && inProgress(auditId)
+          && request.resource.data.keys().hasOnly(['code', 'delta', 'mode', 'observed', 'by', 'byName', 'at', 'clientAt', 'device', 'department', 'voids', 'outsideAssignment'])
+          && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time
+          && text(request.resource.data.code, 128) && request.resource.data.code.size() > 0
+          && request.resource.data.delta is number && request.resource.data.delta >= -1000000000 && request.resource.data.delta <= 1000000000
+          && request.resource.data.mode in ['add', 'set', 'undo', 'unregistered', 'link', 'migrated']
+          && text(request.resource.data.byName, 200) && text(request.resource.data.clientAt, 40);
+        allow update, delete: if false;
+      }
+
+      // Departamentos: tomar uno libre, soltar o completar el propio. Reasignar el de otra persona solo lo hace un administrador.
+      match /departments/{departmentId} {
+        allow read: if isMember();
+        allow create: if isAdmin();
+        allow update: if isMember() && inProgress(auditId)
+          && changed().hasOnly(['assignee', 'assigneeName', 'status', 'updatedBy', 'updatedAt']) && stamped()
+          && request.resource.data.status in ['pending', 'in_progress', 'done']
+          && (isAdmin()
+            || (resource.data.assignee == null && request.resource.data.assignee == request.auth.uid)
+            || (resource.data.assignee == request.auth.uid && (request.resource.data.assignee == request.auth.uid || request.resource.data.assignee == null)));
+        allow delete: if false;
+      }
+
+      // No encontrados: un registro por código, escrito con set + merge para que dos teléfonos (incluso sin conexión)
+      // converjan en el mismo documento. Cada persona escribe solo su etiqueta (labels.<uid>); nunca se borran.
+      match /unregistered/{codeId} {
+        allow read: if isMember();
+        allow create: if isMember() && inProgress(auditId)
+          && request.resource.data.keys().hasOnly(['code', 'department', 'labels'])
+          && text(request.resource.data.code, 128) && request.resource.data.code.size() > 0 && optionalText(request.resource.data, 'department', 200)
+          && request.resource.data.labels.keys().hasOnly([request.auth.uid]);
+        allow update: if isMember() && inProgress(auditId) && request.resource.data.code == resource.data.code
+          && changed().hasOnly(['labels', 'name', 'note', 'department', 'excluded', 'excludedBy', 'excludedAt', 'reason', 'linkedTo', 'updatedBy', 'updatedAt'])
+          // Solo se puede agregar o cambiar la etiqueta propia, nunca la de otra persona.
+          && (!('labels' in changed()) || request.resource.data.labels.diff(resource.data.get('labels', {})).affectedKeys().hasOnly([request.auth.uid]))
+          && optionalText(request.resource.data, 'name', 200) && optionalText(request.resource.data, 'note', 1000)
+          && optionalText(request.resource.data, 'reason', 1000) && optionalText(request.resource.data, 'department', 200);
+        allow delete: if false;
+      }
+
+      match /events/{eventId} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
