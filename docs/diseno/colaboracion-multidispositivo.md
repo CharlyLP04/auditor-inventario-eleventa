@@ -132,3 +132,12 @@ Supuesto: 20,000 productos y dos personas con 2,000 escaneos cada una por día.
 | Concurrencia | Dos clientes del SDK contra el emulador | Escenarios 1 a 9 del encargo: incrementos simultáneos, el mismo producto, el mismo no encontrado, desconexión y reconexión con cola |
 | Campo | `tests/field-browser.js` | Flujos de interfaz con datos sintéticos |
 | **Físicas, a cargo del equipo** | iPhone 17 Pro y Motorola Edge 50 Neo | Cámara, instalación, señal real y ensayo de dos personas |
+
+## 10. Notas de implementación (2026-10-03)
+
+- **No encontrados:** se escriben con `set` + `merge` y cada persona deja su etiqueta en `labels.<uid>`, así dos teléfonos sin conexión convergen en un solo documento sin pisarse; el nombre y la nota definitivos (`name`, `note`) los fija una edición.
+- **Deshacer:** escribe una captura inversa (`mode: undo`, `voids`) y resta también `n` y `u`, para que un producto contado una sola vez vuelva a "pendiente" en lugar de quedar como cero confirmado.
+- **Crear auditoría:** primero se escriben catálogo, cubetas y departamentos, y al final, en una transacción que impide duplicados, el documento de la auditoría. Nadie ve una auditoría con el catálogo incompleto, y un reintento sobrescribe los mismos bloques.
+- **Subir una auditoría local:** `uploadLocalAudit` crea la auditoría en la nube y una captura `migrated` por producto contado; los datos del dispositivo no se modifican.
+- **Fuera de asignación:** contar en un departamento ajeno o libre exige una confirmación; la captura queda con `outsideAssignment: true` y el balance lista los productos capturados por más de una persona.
+- **Código:** `src/services/cloud/` (modelo puro, repositorio y configuración), `src/hooks/useCloudSession.ts`, `src/hooks/useCloudAudit.ts`, `src/components/cloud/` y `firestore.rules`.

@@ -7,25 +7,25 @@
 
 | ID | Sev. | Estado | Qué se hizo / qué falta | Commit |
 |---|---|---|---|---|
-| H-01 | Alto | **Pendiente de decisión** | Diseño y ADR-0002 listos; implementar requiere aprobar Firebase (costo $0, datos en Google Cloud) | 6e12ee3 |
+| H-01 | Alto | **Corregido (falta activar)** | Modo equipo con Firebase: auditoría compartida, capturas atómicas e idempotentes, sincronización en vivo y cola sin conexión. Requiere crear el proyecto ([puesta en marcha](../puesta-en-marcha-equipo.md)) | af6121a, b262dce, db61799, 6dd8575 |
 | H-02 | Alto | Mitigado (parte local) | Guía de instalación en iPhone y solicitud de almacenamiento persistente. Se resuelve de fondo con H-01 (servidor como fuente de verdad) | 265e89d |
 | H-03 | Alto | **Corregido** | Sinónimos, avisos de precio y costo faltantes, columnas sin usar, mapeo manual, vista previa, todas las filas omitidas con motivo y aceptación explícita | 5882164 |
 | H-04 | Alto | **Corregido** | Buscador real; una descripción nunca crea productos | 5882164 |
 | H-05 | Medio | **Corregido** | Panel de no encontrado con nombre, nota, cantidad y departamento; edición, vínculo con el catálogo, exclusión lógica y reincorporación | 5882164 |
-| H-06 | Medio | Corregido (local) | Bitácora de actividad por auditoría (acción, código, cantidad, actor y hora). En la nube, el actor será la persona autenticada | 5882164 |
+| H-06 | Medio | **Corregido** | Local: bitácora de actividad. Nube: historial inmutable de capturas con autor y hora del servidor, más eventos de departamentos, estado y no encontrados | 5882164, b262dce |
 | H-07 | Medio | Abierto (hipótesis) | Medir en el teléfono. La bitácora agrega como máximo unos 3 MB por escritura en catálogos grandes; en la nube cada escaneo es un documento pequeño | — |
-| H-08 | Medio | Pendiente de decisión | Requiere H-01 (asignación compartida con exclusión mutua) | — |
+| H-08 | Medio | **Corregido (falta activar)** | Departamentos compartidos con transacción (tomar, soltar, completar, reasignar) y confirmación explícita al contar fuera de los propios | b262dce, 6dd8575 |
 | H-09 | Medio | **Corregido** | El balance y el dictamen usan precio de venta como cifra principal; el costo queda como referencia | 5882164 |
 | H-10 | Medio | **Corregido** | Los importes por fila se valoran siempre a precio de venta | 5882164 |
 | H-11 | Medio | **Corregido** | Panel "Verificación del inventario" en el balance | 5882164 |
-| H-12 | Medio | Pendiente de decisión | El PIN sigue siendo un control de interfaz; con H-01 lo reemplazan cuentas y reglas del servidor | — |
+| H-12 | Medio | **Corregido en modo equipo** | Cuentas por persona y roles verificados por `firestore.rules` (13 pruebas de reglas y prueba de mutación). El PIN sigue siendo un control de interfaz **solo en modo local** | af6121a |
 | H-13 | Medio | **Corregido** | CSP y cabeceras en `vercel.json` y en el servidor local, con una prueba que exige que coincidan. Se aplica en producción al desplegar | 265e89d |
-| H-14 | Bajo | Abierto | Con la nube, el respaldo deja de ser el canal de transferencia | — |
+| H-14 | Bajo | Mitigado | En modo equipo los respaldos ya no son el canal de transferencia; en modo local siguen siendo un JSON sin cifrar | 6dd8575 |
 | H-15 | Bajo | Abierto (aceptado) | `html5-qrcode` funciona y no tiene vulnerabilidades conocidas | — |
 | H-16 | Bajo | **Corregido** | Se eliminaron `ScanLog` y `cooldownMs`; los respaldos viejos que lo traen siguen siendo válidos | 5882164 |
 | H-17 | Bajo | Abierto | Renombrar la hoja cambiaría un formato que el equipo ya usa; se deja documentado | — |
 | H-18 | Bajo | Abierto | Agregar CI requiere decidir el flujo en GitHub | — |
-| H-19 | Bajo | Parcial | La bitácora cubre las acciones; falta un registro de errores | — |
+| H-19 | Bajo | Parcial | La bitácora (local) y el historial y los eventos (nube) cubren las acciones; falta un registro de errores técnicos | 5882164, b262dce |
 | H-20 | Bajo | **Corregido** | La búsqueda ignora acentos, mayúsculas y el orden de las palabras | 5882164 |
 | H-21 | Bajo | Parcial | Placeholder y textos secundarios del escáner, la importación y la instalación con más contraste; quedan etiquetas de 10 px en el balance anterior | 5882164 |
 | H-22 | Medio | **Corregido** | En el teléfono, la cabecera fija ocupaba unos 255 de 812 px sobre el escáner; ahora se desplaza con el contenido | 5882164 |
@@ -51,9 +51,22 @@
 | 9 | Si faltan las columnas de precio o costo, se advierte; las columnas sin usar se listan | *a missing sale price…*, *unknown columns…* | unitaria | PASA |
 | 10 | El mapeo manual reemplaza la detección y rechaza una columna asignada a dos campos | *a manual column mapping…* | unitaria | PASA |
 | 11 | `vercel.json` publica las mismas cabeceras que el servidor local, sin `unsafe-eval` | `tests/server.test.mjs` | unitaria | PASA |
+| 12a | Reglas: sin membresía no hay acceso; un auditor no se eleva a administrador; las capturas son inmutables y de su autor; no hay escrituras en auditorías cerradas; departamentos ajenos protegidos; las etiquetas de no encontrados no se pueden pisar | `tests/rules.emulator.mjs` | reglas (emulador) | 13/13 |
+| 12b | Dos personas: misma auditoría, departamentos distintos y carrera por el mismo, escaneo simultáneo, mismo producto sin pérdidas (50/50), corrección visible sin recargar, desconexión y reconexión con cola, mismo no encontrado desde ambos, editar, excluir, reincorporar y vincular, lote repetido rechazado, integridad, subida local sin modificar datos y auditoría completada | `tests/sync.emulator.mjs` | integración con dos clientes reales | 17/17 |
+| 12c | Modo equipo en navegador con emuladores (dos orígenes = dos teléfonos): login, contraseña incorrecta, crear auditoría con fila omitida, tomar departamentos, confirmación fuera de los propios, no encontrado, actualización en vivo, doble captura marcada, integridad OK; axe sin problemas críticos ni serios | navegador integrado (manual, guiado por script) | E2E | Correcto |
 | 12 | Flujos de interfaz bajo la CSP: verde al encontrar, amarillo por zona, rojo sin contar ante un código desconocido, registro de un no encontrado, buscar sin crear productos, excluir y reincorporar con bitácora, vista previa de importación con aceptación explícita y verificación en el balance | `tests/field-browser.js` (puerto 5191) | E2E en navegador | 34/35 |
 
 La falla de la suite de campo es "Caché sin conexión": el panel de navegador integrado no registra service workers (limitación conocida del entorno). Se verifica en Chrome o Edge.
+
+## Riesgos residuales
+
+- **Contadores:** las reglas aceptan cualquier incremento de un miembro sin cotejarlo con su captura. Un miembro malintencionado podría alterar un total. Mitigación: **Verificación de integridad** recalcula todo desde el historial inmutable.
+- **Lectura amplia:** todos los miembros leen todas las auditorías y empresas, lo cual es adecuado para dos socios. Al contratar auditores con vista restringida hay que endurecer las reglas por asignación (etapa 2).
+- **Capturas sin enviar:** si se borran los datos del navegador antes de sincronizar, se pierden. El indicador de pendientes y la advertencia al cerrar sesión lo hacen visible.
+- **Primer inicio de sesión:** requiere internet en cada dispositivo.
+- **Catálogo en modo equipo:** no se editan precios ni departamentos del catálogo desde la app; hay que reimportar en una auditoría nueva.
+- **Cuotas del plan gratuito:** con dos personas el uso estimado es menos de la mitad de la cuota diaria. Con más personas o catálogos mucho mayores conviene vigilar el consumo en la consola.
+- **Dependencias de desarrollo:** `firebase-tools` arrastra avisos de `npm audit` (12 altos y 4 moderados). Solo se usa en la PC para emuladores y despliegue de reglas; las dependencias que llegan al teléfono tienen 0 vulnerabilidades.
 
 ## Pruebas físicas pendientes (a cargo del equipo)
 
@@ -61,3 +74,4 @@ La falla de la suite de campo es "Caché sin conexión": el panel de navegador i
 - [ ] Motorola Edge 50 Neo: los mismos pasos, la vibración diferenciada y la velocidad de escaneo con un catálogo real.
 - [ ] Importar el archivo real de eleventa del cliente y comparar el total de filas con la verificación del balance.
 - [ ] Revisar en producción las cabeceras (`curl -I`) y que la cámara funcione con la CSP desplegada.
+- [ ] Ensayo del modo equipo con los dos teléfonos reales: pasos 1 a 6 de la [guía de puesta en marcha](../puesta-en-marcha-equipo.md#5-ensayo-antes-de-la-auditoría-al-menos-una-semana-antes), incluido el modo avión.

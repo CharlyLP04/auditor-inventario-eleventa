@@ -27,6 +27,16 @@ La versión compilada almacena los recursos para abrirse sin conexión después 
 7. Exporta el Excel o imprime el reporte. El balance y el dictamen valoran a precio de venta; el costo se muestra como referencia. La hoja de ajuste incluye solo productos contados y registrados. Los no registrados permanecen en el reporte para revisión; no se exportan con costo/precio cero a la hoja de ajuste.
 8. Revisa la correspondencia de columnas y las opciones de importación de tu versión de eleventa antes de aplicar cambios. Esta aplicación no accede a su base de datos ni aplica ajustes automáticamente.
 
+## Modo equipo (varios teléfonos en la misma auditoría)
+
+Con Firebase configurado (ver [docs/puesta-en-marcha-equipo.md](docs/puesta-en-marcha-equipo.md)), cada persona entra con su cuenta y la app ofrece dos modos:
+- **Equipo:** auditoría compartida en vivo, con departamentos asignables, historial de quién capturó qué y conteo sin conexión con envío automático.
+- **Local:** como hasta ahora, solo en ese dispositivo.
+
+Sin configuración, la app funciona únicamente en modo local y no descarga el SDK de Firebase. Las decisiones están en [ADR-0002](docs/adr/0002-colaboracion-en-tiempo-real-con-sesiones-por-persona.md) y el detalle técnico en [docs/diseno](docs/diseno/colaboracion-multidispositivo.md).
+
+## Respaldos del modo local
+
 El botón **Respaldo** descarga un JSON. Puedes restaurarlo desde Cargar archivo para continuar los conteos en este u otro equipo. PC y celular **no se sincronizan**; cambiar de dirección o navegador cambia el almacenamiento. El programa avisa si el almacenamiento está lleno o los datos guardados están dañados y evita sobrescribir silenciosamente esos datos.
 
 ## Desarrollo y pruebas locales
@@ -35,7 +45,8 @@ El botón **Respaldo** descarga un JSON. Puedes restaurarlo desde Cargar archivo
 - `npm run build`: TypeScript y compilación de producción.
 - `npm start`: servir `dist` con PWA y QR.
 - `npm run lint`: análisis de código.
-- `npm test`: pruebas de importación, búsqueda, no encontrados, conteo, validación, exportación y cabeceras de seguridad.
+- `npm test`: pruebas de importación, búsqueda, no encontrados, conteo, validación, exportación, modelo de nube y cabeceras de seguridad.
+- `npm run test:cloud`: reglas de Firestore y escenarios de dos personas contra los emuladores de Firebase (requiere Java 11+).
 - `node tests/field-browser-server.mjs`: verificación de campo en `http://localhost:5191/__field.html` (requiere `npm run build`). Pulsa Ejecutar; usa datos sintéticos en otro origen de almacenamiento y borra su base de pruebas al iniciar.
 
 Las pruebas de navegador no sustituyen probar una cámara física, una linterna, una instalación real en iOS/Android o la importación en una instalación real de eleventa.
