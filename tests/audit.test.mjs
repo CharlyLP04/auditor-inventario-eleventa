@@ -20,8 +20,47 @@ test('validator rejects unknown unit types from restored backups', () => { asser
 test('validator accepts valid old records and explicit zero',() => assert.equal(validateProducts([product({ counted: true })]), true));
 test('import preserves text barcode leading zeros', () => assert.equal(parse([header, ['001234', 'Arroz', 5, 10, 15]]).products[0].code, '001234'));
 test('import preserves numeric barcode display formatting', () => { const ws = XLSX.utils.aoa_to_sheet([header, [123, 'Arroz', 5, 10, 15]]); ws.A2.z = '000000'; const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos'); assert.equal(parseEleventaExcel(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })).products[0].code, '000123'); });
-test('duplicate import fails atomically', () => { const result = parse([header, ['001', 'A', 3], ['001', 'B', 9]]); assert.equal(result.products.length, 0); assert.match(result.errors[0], /duplicado/); });
-test('invalid stock cannot silently turn into zero', () => assert.match(parse([header, ['001', 'A', 'muchos']]).errors[0], /número inválido/));
+test('duplicate code rows are reported with both rows and never merged silently', () => {
+  const result = parse([header, ['001', 'A', 3], ['001', 'B', 9]]);
+  assert.deepEqual(result.products.map(p => p.description), ['A']);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.issues[0].row, 3);
+  assert.match(result.issues[0].reason, /duplicado.*fila 2/);
+});
+test('invalid stock cannot silently turn into zero', () => { const result = parse([header, ['001', 'A', 'muchos']]); assert.equal(result.products.length, 0); assert.match(result.issues[0].reason, /número inválido/); });
+test('every invalid row is reported, not only the first twenty', () => {
+  const rows = [header, ...Array.from({ length: 30 }, (_, i) => [`C${i}`, 'X', 'muchos']), ['OK1', 'Válido', 2]];
+  const result = parse(rows);
+  assert.equal(result.issues.length, 30);
+  assert.deepEqual(result.products.map(p => p.code), ['OK1']);
+  assert.equal(result.report.fileRows, 31);
+  assert.equal(result.report.imported, 1);
+});
+test('common price and cost header variants are recognized', () => {
+  const result = parseEleventaExcel(utf8('Código,Descripción,Existencia,Precio Público,Costo Promedio\n001,Café,5,20,10\n'));
+  assert.equal(result.products[0].price, 20);
+  assert.equal(result.products[0].cost, 10);
+});
+test('a missing sale price or cost column is reported instead of silently valued at zero', () => {
+  const result = parseEleventaExcel(utf8('Código,Descripción,Existencia\n001,Café,5\n'));
+  assert.equal(result.products.length, 1);
+  assert.ok(result.report.warnings.some(w => /precio de venta/i.test(w)));
+  assert.ok(result.report.warnings.some(w => /costo/i.test(w)));
+  assert.equal(result.report.mapping.price, -1);
+});
+test('unknown columns are listed so their data is not lost unnoticed', () => assert.deepEqual(parseEleventaExcel(utf8('Código,Descripción,Existencia,Marca,Proveedor\n001,Café,5,Nescafé,ACME\n')).report.unusedColumns, ['Marca', 'Proveedor']));
+test('a manual column mapping overrides automatic detection', () => {
+  const buffer = () => utf8('Clave,Artículo,Disponible,PVP\n001,Café,5,20\n');
+  assert.equal(parseEleventaExcel(buffer()).errors.length, 1);
+  const result = parseEleventaExcel(buffer(), { mapping: { code: 0, description: 1, stock: 2, price: 3 } });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.products[0].theoreticalStock, 5);
+  assert.equal(result.products[0].price, 20);
+  assert.deepEqual(result.report.headers, ['Clave', 'Artículo', 'Disponible', 'PVP']);
+});
+test('a manual mapping cannot assign one column to two fields', () => assert.match(parseEleventaExcel(utf8('A,B,C\n1,2,3\n'), { mapping: { code: 0, description: 0, stock: 2 } }).errors[0], /misma columna/));
+test('internal key column is imported as SKU next to the barcode', () => assert.equal(parseEleventaExcel(utf8('Código,Clave interna,Descripción,Existencia\n7501,INT-9,Café,5\n')).products[0].sku, 'INT-9'));
+test('a header row below a title is still detected', () => assert.equal(parseEleventaExcel(utf8('Reporte de productos\n\nCódigo,Descripción,Existencia\n001,Café,5\n')).products[0].code, '001'));
 test('missing stock column is rejected', () => assert.equal(parse([['Código', 'Descripción'], ['001', 'A']]).products.length, 0));
 test('cost and sale price columns remain distinct', () => { const result = parse([['Código', 'Descripción', 'Existencia', 'Precio costo', 'Precio venta'], ['001', 'A', 5, 10, 15]]); assert.equal(result.products[0].cost, 10); assert.equal(result.products[0].price, 15); });
 test('MXN thousands and decimals are parsed', () => assert.equal(parse([header, ['001', 'A', '1,234.5', '$1,234.50', '1500']]).products[0].cost, 1234.5));

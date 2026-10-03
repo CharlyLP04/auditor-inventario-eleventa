@@ -1,0 +1,96 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { applyCount } from '../src/services/scannerState.ts';
+import { calculateStats, productStatus, validateProducts, catalogVerification } from '../src/services/auditState.ts';
+import { addUnregistered, editUnregistered, excludeUnregistered, restoreUnregistered, linkUnregistered } from '../src/services/unregisteredProducts.ts';
+const product = overrides => ({ code: '001', description: 'Producto', cost: 10, price: 15, department: 'General', theoreticalStock: 5, physicalStock: 0, ...overrides });
+const catalog = () => [product(), product({ code: '002', description: 'Arroz', department: 'Abarrotes', price: 20 })];
+test('an unknown code is never counted silently', () => assert.throws(() => applyCount(catalog(), 'ZZZ', 1, 'add'), error => error.code === 'not_found'));
+test('adding a not-found product keeps its name, note, quantity and department', () => {
+  const { products, product: added } = addUnregistered(catalog(), { code: ' 750999 ', name: 'Galletas sin etiqueta', note: 'Anaquel 4', quantity: 3, department: 'Abarrotes' });
+  assert.equal(added.code, '750999');
+  assert.equal(added.description, 'Galletas sin etiqueta');
+  assert.equal(added.note, 'Anaquel 4');
+  assert.equal(added.physicalStock, 3);
+  assert.equal(added.isUnregistered, true);
+  assert.equal(added.department, 'Abarrotes');
+  assert.ok(validateProducts(products));
+  assert.equal(productStatus(added), 'unregistered');
+});
+test('a nameless not-found product gets a recognizable default name', () => assert.match(addUnregistered(catalog(), { code: 'X9', quantity: 1 }).product.description, /X9/));
+test('registering the same not-found code twice adds to the existing record instead of duplicating it', () => {
+  const first = addUnregistered(catalog(), { code: 'X1', name: 'Caja', quantity: 2 }).products;
+  const second = addUnregistered(first, { code: 'X1', name: 'Otro nombre', quantity: 5 });
+  assert.equal(second.products.filter(p => p.code === 'X1').length, 1);
+  assert.equal(second.product.physicalStock, 7);
+  assert.equal(second.product.description, 'Caja');
+});
+test('a catalog code cannot be registered as not found', () => assert.throws(() => addUnregistered(catalog(), { code: '001', quantity: 1 }), /catálogo/));
+test('not-found products can be counted again by scanning them', () => {
+  const { products } = addUnregistered(catalog(), { code: 'X1', name: 'Caja', quantity: 2 });
+  assert.equal(applyCount(products, 'X1', 1, 'add').product.physicalStock, 3);
+});
+test('editing changes name and note but never the code', () => {
+  const { products } = addUnregistered(catalog(), { code: 'X1', name: 'Caja', quantity: 2 });
+  const edited = editUnregistered(products, 'X1', { name: 'Caja de cereal', note: 'Revisar con encargado' }).find(p => p.code === 'X1');
+  assert.equal(edited.description, 'Caja de cereal');
+  assert.equal(edited.note, 'Revisar con encargado');
+  assert.throws(() => editUnregistered(products, '001', { name: 'x' }), /no encontrado/i);
+});
+test('excluding is reversible and keeps the counted quantity for the record', () => {
+  const { products } = addUnregistered(catalog(), { code: 'X1', name: 'Caja', quantity: 4 });
+  const excluded = excludeUnregistered(products, 'X1', 'Pertenece a otra tienda', '2026-10-03T10:00:00.000Z');
+  const item = excluded.find(p => p.code === 'X1');
+  assert.equal(item.excludedAt, '2026-10-03T10:00:00.000Z');
+  assert.equal(item.excludedReason, 'Pertenece a otra tienda');
+  assert.equal(item.physicalStock, 4);
+  assert.equal(productStatus(item), 'excluded');
+  assert.equal(calculateStats(excluded).unregisteredCount, 0);
+  assert.equal(calculateStats(excluded).excludedCount, 1);
+  assert.equal(calculateStats(excluded).totalPiecesPhysical, 0);
+  assert.throws(() => applyCount(excluded, 'X1', 1, 'add'), error => error.code === 'excluded');
+  const restored = restoreUnregistered(excluded, 'X1').find(p => p.code === 'X1');
+  assert.equal(restored.excludedAt, undefined);
+  assert.equal(productStatus(restored), 'unregistered');
+});
+test('only not-found products can be excluded', () => assert.throws(() => excludeUnregistered(catalog(), '001', 'x'), /no encontrado/i));
+test('linking a not-found product to the catalog moves its quantity and keeps the trace', () => {
+  const { products } = addUnregistered(catalog(), { code: 'X1', name: 'Arroz sin etiqueta', quantity: 4 });
+  const linked = linkUnregistered(products, 'X1', '002', '2026-10-03T10:00:00.000Z');
+  assert.equal(linked.find(p => p.code === '002').physicalStock, 4);
+  assert.equal(linked.find(p => p.code === '002').counted, true);
+  const source = linked.find(p => p.code === 'X1');
+  assert.equal(source.linkedTo, '002');
+  assert.ok(source.excludedAt);
+  assert.match(source.excludedReason, /002/);
+});
+test('validator rejects malformed not-found fields', () => {
+  assert.equal(validateProducts([product({ note: 5 })]), false);
+  assert.equal(validateProducts([product({ excludedAt: 'ayer' })]), false);
+  assert.equal(validateProducts([product({ sku: 'INT-1', note: 'ok', excludedAt: '2026-10-03T10:00:00.000Z', excludedReason: 'x', linkedTo: '002' })]), true);
+});
+test('catalog verification separates expected, found, pending, not-found and excluded products', () => {
+  let products = catalog().concat(product({ code: '003', department: 'Abarrotes', price: 0 }));
+  products = applyCount(products, '001', 5, 'add').products;
+  products = applyCount(products, '002', 1, 'set').products;
+  products = addUnregistered(products, { code: 'X1', quantity: 2 }).products;
+  products = addUnregistered(products, { code: 'X2', quantity: 1 }).products;
+  products = excludeUnregistered(products, 'X2', 'error de lectura');
+  const report = { fileRows: 4, imported: 3, issues: [{ row: 5, reason: 'código duplicado' }] };
+  const v = catalogVerification(products, report);
+  assert.equal(v.expected, 3);
+  assert.equal(v.fileRows, 4);
+  assert.equal(v.skipped, 1);
+  assert.equal(v.found, 2);
+  assert.equal(v.pending, 1);
+  assert.equal(v.match, 1);
+  assert.equal(v.missing, 1);
+  assert.equal(v.unregistered, 1);
+  assert.equal(v.excluded, 1);
+  assert.equal(v.missingPrice, 1);
+  assert.equal(v.departmentsTotal, 2);
+  assert.equal(v.departmentsDone, 1);
+  assert.equal(v.progress, 67);
+  assert.equal(v.expectedSaleValue, 5 * 15 + 5 * 20);
+  assert.equal(v.countedSaleValue, 5 * 15 + 1 * 20);
+});
