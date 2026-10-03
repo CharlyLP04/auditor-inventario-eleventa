@@ -74,12 +74,31 @@ export async function createCloudAudit(db: Firestore, user: CloudUser, input: { 
   return auditId;
 }
 
+/**
+ * Sube una auditoría guardada en este dispositivo: catálogo y cada producto contado como captura "migrated".
+ * No modifica ni borra los datos locales. Los no encontrados excluidos se omiten (siguen en el respaldo local).
+ */
+export async function uploadLocalAudit(db: Firestore, admin: CloudUser, input: { companyId: string; period: string; products: Product[]; report?: ImportReport }) {
+  const catalogProducts = input.products.filter(p => !p.isUnregistered);
+  const auditId = await createCloudAudit(db, admin, { companyId: input.companyId, period: input.period, products: catalogProducts, report: input.report });
+  const refs = auditRefs(db, auditId);
+  const counted = input.products.filter(p => (p.counted ?? (p.physicalStock > 0 || Boolean(p.lastScannedAt))) && !p.excludedAt);
+  for (let i = 0; i < counted.length; i += 150) {
+    const batch = writeBatch(db);
+    for (const p of counted.slice(i, i + 150)) {
+      addCapture(batch, db, admin, auditId, { code: p.code, delta: p.physicalStock, mode: 'migrated', observed: null, department: p.department });
+      if (p.isUnregistered) batch.set(doc(refs.unregistered, codeKey(p.code)), clean({ code: p.code, department: p.department, labels: { [admin.uid]: { name: p.description, note: p.note } } }), { merge: true });
+    }
+    await batch.commit();
+  }
+  return { auditId, migrated: counted.length, skippedExcluded: input.products.filter(p => p.excludedAt).length };
+}
+
 interface CaptureInput { code: string; delta: number; mode: string; observed: number | null; department?: string; outsideAssignment?: boolean; voids?: string; countDelta?: number; }
-/** Captura + incremento del contador en un lote atómico: o se aplican ambos o ninguno, también al salir de la cola sin conexión. */
-function writeCapture(db: Firestore, user: CloudUser, auditId: string, input: CaptureInput, extra?: (batch: WriteBatch) => void) {
+/** Agrega a un lote la captura y el incremento de su contador: o se aplican ambos o ninguno, también al salir de la cola sin conexión. */
+function addCapture(batch: WriteBatch, db: Firestore, user: CloudUser, auditId: string, input: CaptureInput) {
   const refs = auditRefs(db, auditId);
   const capture = doc(refs.captures);
-  const batch = writeBatch(db);
   batch.set(capture, {
     ...clean({
       code: input.code, delta: input.delta, mode: input.mode, observed: input.observed, by: user.uid, byName: user.name,
@@ -90,8 +109,13 @@ function writeCapture(db: Firestore, user: CloudUser, auditId: string, input: Ca
   });
   const countDelta = input.countDelta ?? 1;
   batch.update(refs.bucket(input.code), new FieldPath('q', input.code), increment(input.delta), new FieldPath('n', input.code), increment(countDelta), new FieldPath('u', input.code, user.uid), increment(countDelta));
+  return capture.id;
+}
+function writeCapture(db: Firestore, user: CloudUser, auditId: string, input: CaptureInput, extra?: (batch: WriteBatch) => void) {
+  const batch = writeBatch(db);
+  const captureId = addCapture(batch, db, user, auditId, input);
   extra?.(batch);
-  return { captureId: capture.id, committed: batch.commit() };
+  return { captureId, committed: batch.commit() };
 }
 
 export function recordCapture(db: Firestore, user: CloudUser, auditId: string, input: { code: string; quantity: number; mode: CountMode; current?: Pick<Product, 'physicalStock'>; department?: string; outsideAssignment?: boolean }) {

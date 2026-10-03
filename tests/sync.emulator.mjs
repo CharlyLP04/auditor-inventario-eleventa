@@ -9,7 +9,7 @@ import { initializeFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, dis
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createCompany, createCloudAudit, recordCapture, undoCapture, registerUnregistered, editUnregistered, setUnregisteredExcluded,
-  linkUnregistered, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment, setAuditStatus, readAuditState, readCaptures, auditRefs,
+  linkUnregistered, uploadLocalAudit, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment, setAuditStatus, readAuditState, readCaptures, auditRefs,
 } from '../src/services/cloud/repository.ts';
 import { verifyIntegrity } from '../src/services/cloud/model.ts';
 import { calculateStats } from '../src/services/auditState.ts';
@@ -184,4 +184,22 @@ test('11 · al completar la auditoría ya no se aceptan capturas y el balance fi
   const stats = calculateStats(products);
   assert.equal(stats.auditedCount, products.filter(p => !p.excludedAt && p.counted).length);
   assert.ok(stats.totalPiecesPhysical > 0);
+});
+test('una auditoría local se sube a la nube con sus conteos sin tocar los datos locales', async () => {
+  const local = [
+    { ...catalog[0], physicalStock: 12, counted: true }, { ...catalog[1] }, { ...catalog[2], physicalStock: 0, counted: true },
+    { code: 'NF-1', description: 'Caja sin etiqueta', note: 'Pasillo 3', cost: 0, price: 0, department: 'Abarrotes', theoreticalStock: 0, physicalStock: 2, counted: true, isUnregistered: true },
+    { code: 'NF-2', description: 'Excluido', cost: 0, price: 0, department: 'Abarrotes', theoreticalStock: 0, physicalStock: 1, counted: true, isUnregistered: true, excludedAt: '2026-10-01T10:00:00.000Z' },
+  ];
+  const snapshot = JSON.stringify(local);
+  const companyId = await createCompany(oscar.db, oscar.user, { name: 'Tienda migrada' });
+  const result = await uploadLocalAudit(oscar.db, oscar.user, { companyId, period: '2026-10', products: local });
+  assert.equal(JSON.stringify(local), snapshot, 'los datos locales no se modifican');
+  assert.equal(result.migrated, 3); assert.equal(result.skippedExcluded, 1);
+  const { products } = await readAuditState(charly.db, result.auditId);
+  const byCode = Object.fromEntries(products.map(p => [p.code, p]));
+  assert.equal(byCode['001'].physicalStock, 12); assert.equal(byCode['002'].counted, false);
+  assert.equal(byCode['101'].counted, true); assert.equal(byCode['101'].physicalStock, 0);
+  assert.equal(byCode['NF-1'].isUnregistered, true); assert.equal(byCode['NF-1'].description, 'Caja sin etiqueta');
+  assert.equal(byCode['NF-2'], undefined);
 });
