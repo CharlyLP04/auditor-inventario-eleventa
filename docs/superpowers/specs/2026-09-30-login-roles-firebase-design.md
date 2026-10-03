@@ -2,7 +2,7 @@
 
 - **Fecha:** 2026-09-30
 - **Rama:** `feat/login-roles-firebase` (parte de `fix/auditoria-integral`)
-- **Estado:** diseño aprobado por secciones; pendiente de revisión de este documento
+- **Estado:** reemplazado por [ADR-0002](../../adr/0002-colaboracion-en-tiempo-real-con-sesiones-por-persona.md) y el [diseño de colaboración](../../diseno/colaboracion-multidispositivo.md) (2026-10-03: sin login de Google, una sesión por persona y departamentos asignables). Se conserva como antecedente.
 
 ## 1. Objetivo
 
