@@ -1,5 +1,5 @@
 import { doc, collection, getDoc, getDocs, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
-import type { Firestore, DocumentData, WriteBatch, Transaction } from 'firebase/firestore';
+import type { Firestore, DocumentData, DocumentReference, WriteBatch } from 'firebase/firestore';
 import type { Product, CountMode, ImportReport } from '../../types';
 import { BUCKETS, bucketOf, codeKey, departmentKey, splitCatalog, planCapture, assembleProducts, mergeBuckets } from './model';
 import type { BucketData, UnregisteredDoc } from './model';
@@ -29,7 +29,8 @@ const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const iso = (value: unknown) => value instanceof Timestamp ? value.toDate().toISOString() : typeof value === 'string' ? value : undefined;
 const device = () => typeof navigator === 'undefined' ? 'sin navegador' : navigator.userAgent.slice(0, 120);
 const stamp = (user: CloudUser) => ({ updatedBy: user.uid, updatedAt: serverTimestamp() });
-function logEvent(target: WriteBatch | Transaction, events: ReturnType<typeof auditRefs>['events'], user: CloudUser, type: string, detail: string) {
+// Lote o transacción: ambos exponen set(ref, data).
+function logEvent(target: { set(ref: DocumentReference, data: DocumentData): unknown }, events: ReturnType<typeof auditRefs>['events'], user: CloudUser, type: string, detail: string) {
   target.set(doc(events), { by: user.uid, byName: user.name, at: serverTimestamp(), type, detail });
 }
 async function commitInChunks(db: Firestore, writes: ((batch: WriteBatch) => void)[]) {
