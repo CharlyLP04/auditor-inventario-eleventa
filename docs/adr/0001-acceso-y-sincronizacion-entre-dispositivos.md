@@ -1,6 +1,6 @@
 # ADR-0001: Acceso y sincronización entre dispositivos sin login de Google
 
-- **Estado:** Propuesto
+- **Estado:** Reemplazado por [ADR-0002](0002-colaboracion-en-tiempo-real-con-sesiones-por-persona.md) (2026-10-03: se requieren sesiones por persona)
 - **Fecha:** 2026-10-03
 - **Decisores:** Oscar y Charlie (socios y administradores)
 - **Skills aplicadas:** `engineering:architecture` (formato y análisis de compromisos), `security-critic-audit` (revisión adversarial), `ux-craft-delight` (fricción en campo)

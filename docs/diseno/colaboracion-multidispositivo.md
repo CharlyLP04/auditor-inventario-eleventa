@@ -1,6 +1,6 @@
 # Diseño técnico · Auditoría colaborativa en varios dispositivos
 
-- **Estado:** Propuesto, depende de [ADR-0002](../adr/0002-colaboracion-en-tiempo-real-con-sesiones-por-persona.md)
+- **Estado:** Aprobado (2026-10-03), según [ADR-0002](../adr/0002-colaboracion-en-tiempo-real-con-sesiones-por-persona.md)
 - **Fecha:** 2026-10-03
 - **Alcance:** fases 4b y 5 del [informe de auditoría](../auditoria/2026-10-03-informe-auditoria.md)
 - **Reemplaza a:** `docs/superpowers/specs/2026-09-30-login-roles-firebase-design.md`, que asumía login con Google

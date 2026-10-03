@@ -1,6 +1,6 @@
 # ADR-0002: Colaboración en tiempo real con sesiones por persona
 
-- **Estado:** Propuesto (requiere aprobación de Oscar y Charly; si se aprueba, reemplaza a ADR-0001)
+- **Estado:** Aceptado el 2026-10-03 (opción A: Firebase Spark, cuentas de correo y contraseña por persona). Reemplaza a ADR-0001.
 - **Fecha:** 2026-10-03
 - **Decisores:** Oscar y Charly
 - **Skills aplicadas:** `engineering:architecture`, `ecc:security-review`, `ecc:production-audit`
@@ -53,7 +53,7 @@ El requisito cambió respecto a ADR-0001:
 | Esfuerzo (×1) | 3 | 2 | 2 | 1 |
 | **Total (máx. 75)** | **72** | **62** | **55** | **42** |
 
-## Decisión propuesta
+## Decisión
 
 **Adoptar A.** Implica:
 - Firebase Auth con correo y contraseña, **una cuenta por persona**, creada por un administrador en la consola de Firebase. La app no ofrece registro público.
@@ -92,7 +92,7 @@ El requisito cambió respecto a ADR-0001:
 
 ## Acciones que requieren a una persona
 
-1. [ ] Aprobar o ajustar este ADR (Oscar y Charly).
+1. [x] Aprobar o ajustar este ADR (aprobado el 2026-10-03).
 2. [ ] Crear el proyecto de Firebase (plan Spark) y registrar la app web. La configuración web es pública por diseño y se guarda en variables `VITE_FIREBASE_*`.
 3. [ ] Habilitar el inicio de sesión con correo y contraseña, y crear las dos cuentas.
 4. [ ] Publicar las reglas (`firebase deploy --only firestore:rules`) desde una cuenta con permisos.

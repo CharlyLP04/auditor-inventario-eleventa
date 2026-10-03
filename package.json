@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
+    "firebase": "^12.19.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.47.0",
     "react": "^19.2.8",
@@ -20,6 +21,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.13.3",
@@ -28,6 +30,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
     "axe-core": "4.13.0",
+    "firebase-tools": "^15.32.1",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
@@ -36,5 +39,8 @@
   },
   "engines": {
     "node": ">=22.18.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.5"
   }
 }
