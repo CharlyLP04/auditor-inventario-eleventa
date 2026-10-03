@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { execFile } from 'node:child_process';
 import { terminalQr } from './terminal-qr.mjs';
+import { SECURITY_HEADERS } from './security-headers.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.AUDITOR_PORT || 5173);
@@ -23,8 +24,7 @@ const handler = (request, response) => {
       'Content-Type': mime[extname(file)] || 'application/octet-stream',
       'Content-Length': body.length,
       'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin',
+      ...SECURITY_HEADERS,
     });
     response.end(request.method === 'HEAD' ? undefined : body);
   } catch { response.writeHead(400); response.end('Solicitud inválida'); }

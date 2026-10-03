@@ -12,5 +12,10 @@ http.createServer((req, res) => {
     if (req.method === 'POST') { let body=''; req.on('data', part => { body += part; }); req.on('end', () => { results=JSON.parse(body); res.end('OK'); }); }
     else { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(results)); } return;
   }
+  // La suite carga la app en un iframe del mismo origen: solo aquí se permite ese marco; el resto de la CSP sigue activa.
+  const writeHead = res.writeHead.bind(res);
+  res.writeHead = (status, headers = {}) => writeHead(status, headers['Content-Security-Policy']
+    ? { ...headers, 'Content-Security-Policy': headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'"), 'X-Frame-Options': 'SAMEORIGIN' }
+    : headers);
   handler(req,res);
 }).listen(5191,'127.0.0.1',()=>console.log('Pruebas aisladas: http://localhost:5191/__field.html'));

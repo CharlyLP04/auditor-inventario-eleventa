@@ -52,3 +52,16 @@ test('local server never serves source files or paths outside dist', async () =>
   for (const path of ['/src/App.tsx', '/package.json', '/..%2fpackage.json', '/%2e%2e%5cpackage.json', '/..%5c..%5cpackage.json']) assert.equal(await request('GET', path), 404, path);
 });
 test('local server only accepts read requests', async () => assert.equal(await request('POST', '/index.html'), 405));
+test('Vercel publishes the same security headers as the local server', async () => {
+  const { SECURITY_HEADERS } = await import('../scripts/security-headers.mjs');
+  const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const published = Object.fromEntries(vercel.headers.find(h => h.source === '/(.*)').headers.map(h => [h.key, h.value]));
+  assert.deepEqual(published, SECURITY_HEADERS);
+  assert.doesNotMatch(SECURITY_HEADERS['Content-Security-Policy'], /unsafe-eval|script-src[^;]*unsafe-inline/);
+});
+test('local server sends the security headers', async () => {
+  const headers = await new Promise(resolve => handler({ method: 'GET', url: '/index.html' }, { writeHead(status, h) { resolve({ status, ...h }); return this; }, end() {} }));
+  if (headers.status === 404) return; // Sin build (dist) no hay archivo que servir.
+  assert.match(headers['Content-Security-Policy'], /frame-ancestors 'none'/);
+  assert.equal(headers['X-Frame-Options'], 'DENY');
+});

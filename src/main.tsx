@@ -25,6 +25,9 @@ if ('serviceWorker' in navigator) {
   }
 }
 
+// Pide al navegador no desalojar IndexedDB por falta de espacio (Android/Chrome lo concede a apps instaladas o usadas con frecuencia).
+void navigator.storage?.persist?.().catch(() => false);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
