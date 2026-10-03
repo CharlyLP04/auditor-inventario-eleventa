@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2, Shield, UserRound, KeyRound } from 'lucide-react';
+import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2, Shield, UserRound, KeyRound, Users } from 'lucide-react';
 import type { Product, CountMode, ImportReport } from './types';
 import { InventoryTable } from './components/InventoryTable';
 import { AuditContext } from './components/AuditContext';
@@ -32,7 +32,7 @@ const tabs = [
 
 type Tab = typeof tabs[number]['id'];
 
-export function App() {
+export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
   const store = useAuditStore();
   const { products, productsRef, error, commit, backup, activeAudit, data, busy } = store;
   const company = data?.companies.find(c => c.id === data?.activeCompanyId);
@@ -109,6 +109,7 @@ export function App() {
             {isAdmin ? <Shield size={17} aria-hidden="true" /> : <UserRound size={17} aria-hidden="true" />}{isAdmin ? 'Administrador · Bloquear' : 'Auditor · Acceso admin'}
           </button>
           {isAdmin && <button className="secondary" disabled={busy} onClick={() => setPinMode('change')}><KeyRound size={16} aria-hidden="true" /> Cambiar PIN</button>}
+          {onUseCloud && <button className="secondary" onClick={onUseCloud} title="Contar en equipo con tu cuenta"><Users size={16} aria-hidden="true" /> Equipo</button>}
           <button className="secondary" onClick={backup} title="Descargar respaldo JSON">
             Respaldo
           </button>

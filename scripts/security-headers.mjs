@@ -8,7 +8,8 @@ export const CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob: mediastream:",
-  "connect-src 'self'",
+  // Firestore y Firebase Auth (modo equipo). Sin otros destinos de red.
+  "connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
   "font-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",

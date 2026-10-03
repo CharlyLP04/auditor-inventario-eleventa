@@ -1643,3 +1643,63 @@ main {
 @media (prefers-reduced-motion: reduce) { .scan-flash { animation: none !important; } }
 /* En teléfono la cabecera (empresa, rol y respaldo) ocupaba un tercio de la pantalla fija sobre el escáner. */
 @media (max-width: 767px) { .app-header { position: static; background: var(--app-bg); } }
+
+/* Modo equipo (nube) */
+@media (min-width: 1024px) { .cloud-shell .app-main:not(:has(.cloud-nav)) { margin-left: auto; margin-right: auto; max-width: 1100px; } }
+.cloud-user { display: grid; text-align: right; line-height: 1.3; }
+.cloud-user strong { font-size: 14px; }
+.cloud-user small { font-size: 12px; color: #c7b9a9; overflow-wrap: anywhere; }
+.cloud-login { max-width: 460px; margin: 24px auto; display: grid; gap: 12px; }
+.cloud-login h2 { font-size: 24px; font-weight: 800; }
+.cloud-login p { font-size: 14px; color: #d6cdc3; line-height: 1.6; }
+.cloud-local-link { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.cloud-uid { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cloud-uid code { flex: 1; min-width: 0; padding: 12px; border-radius: 12px; background: #161616; border: 1px solid #ffffff1c; overflow-wrap: anywhere; font-size: 14px; }
+.cloud-home { display: grid; gap: 20px; }
+.cloud-audit-list { display: grid; gap: 10px; }
+.cloud-audit-card { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; text-align: left; width: 100%; }
+.cloud-audit-card strong { display: block; font-size: 17px; }
+.cloud-audit-card small { display: block; color: #c7b9a9; font-size: 13px; margin-top: 2px; }
+.cloud-status { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: #2a2a2a; white-space: nowrap; }
+.cloud-status.status-in_progress { background: #FF6E4222; color: #ffb494; border: 1px solid #FF6E4266; }
+.cloud-status.status-completed { background: var(--scan-found-bg); color: #b9f2ca; border: 1px solid var(--scan-found); }
+.cloud-history summary { cursor: pointer; padding: 12px 0; min-height: 44px; font-weight: 700; }
+.cloud-admin { display: grid; gap: 12px; }
+.cloud-admin h3 { display: flex; gap: 8px; align-items: center; font-size: 17px; font-weight: 800; }
+.cloud-admin p { font-size: 13px; color: #c7b9a9; line-height: 1.5; }
+.cloud-members { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cloud-members li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #161616; border: 1px solid #ffffff14; flex-wrap: wrap; }
+.cloud-members small { display: block; font-size: 12px; color: #c7b9a9; overflow-wrap: anywhere; }
+.cloud-audit { display: grid; gap: 14px; }
+.cloud-audit-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sync-badge { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 800; border: 1px solid; }
+.sync-synced { background: var(--scan-found-bg); border-color: var(--scan-found); color: #c9f5d6; }
+.sync-syncing { background: #FF6E4218; border-color: #FF6E4288; color: #ffc3a8; }
+.sync-offline { background: var(--scan-warning-bg); border-color: var(--scan-warning); color: #fff0bf; }
+.cloud-mine { font-size: 14px; color: #e6ddd3; padding: 10px 14px; border-radius: 14px; background: #202020; border: 1px solid #ffffff14; }
+.cloud-offline { position: sticky; top: 0; z-index: 20; }
+.department-board { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.department-row { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 14px; border-radius: 18px; background: #202020; border: 1px solid #ffffff14; }
+.department-row.is-mine { border-color: var(--app-orange); box-shadow: inset 4px 0 0 var(--app-orange); }
+.department-main { display: grid; gap: 4px; min-width: 0; }
+.department-main strong { font-size: 16px; overflow-wrap: anywhere; }
+.department-main small { font-size: 12px; color: #c7b9a9; }
+.department-main progress { width: 100%; height: 8px; accent-color: var(--app-orange); }
+.dept-status { display: inline-flex; align-items: center; gap: 6px; justify-self: end; align-self: start; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; border: 1px solid #ffffff22; white-space: nowrap; }
+.dept-status.status-in_progress { color: #ffc3a8; border-color: #FF6E4288; background: #FF6E4214; }
+.dept-status.status-done { color: #c9f5d6; border-color: var(--scan-found); background: var(--scan-found-bg); }
+.dept-owner { grid-column: 1; font-size: 13px; font-weight: 700; color: #e9c6a8; }
+.department-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.department-actions button { flex: 1 1 140px; min-height: 48px; }
+.dept-reassign { display: grid; gap: 4px; font-size: 12px; color: #cbb198; flex: 1 1 180px; }
+.dept-reassign select { padding: 10px; border-radius: 12px; border: 1px solid #B38F6F70; background: #161616; color: #F2F1ED; }
+.people-progress { display: grid; gap: 10px; margin-bottom: 16px; }
+.people-progress h3 { font-size: 17px; font-weight: 800; }
+.people-progress ul { display: grid; gap: 4px; font-size: 14px; }
+.cloud-nav { --nav-count: 4; }
+/* Escritorio estrecho (1024 px): la marca y el selector de empresa ceden espacio en lugar de desbordar la cabecera. */
+@media (min-width: 1024px) { .app-header > .brand, .app-header > .brand > div { min-width: 0; } .app-header .brand h1, .app-header .brand p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .app-header > .company-selector { min-width: 140px; flex: 0 1 280px; } .header-actions { flex-shrink: 0; } }
+/* Resumen lateral del escáner (aside angosto en 1024 px): tarjetas apiladas y cifras que nunca desbordan. */
+.summary-panel div { min-width: 0; overflow-wrap: anywhere; }
+.count-layout aside .summary-panel .grid { grid-template-columns: minmax(0, 1fr) !important; }
+.count-layout aside .summary-panel [class*="text-3xl"], .count-layout aside .summary-panel [class*="text-2xl"] { font-size: 1.6rem !important; line-height: 1.15; }

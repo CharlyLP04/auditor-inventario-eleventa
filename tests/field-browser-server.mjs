@@ -15,7 +15,7 @@ http.createServer((req, res) => {
   // La suite carga la app en un iframe del mismo origen: solo aquí se permite ese marco; el resto de la CSP sigue activa.
   const writeHead = res.writeHead.bind(res);
   res.writeHead = (status, headers = {}) => writeHead(status, headers['Content-Security-Policy']
-    ? { ...headers, 'Content-Security-Policy': headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'"), 'X-Frame-Options': 'SAMEORIGIN' }
+    ? { ...headers, 'Content-Security-Policy': headers['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'").replace("connect-src 'self'", "connect-src 'self' http://127.0.0.1:8080 http://127.0.0.1:9099 ws://127.0.0.1:8080"), 'X-Frame-Options': 'SAMEORIGIN' }
     : headers);
   handler(req,res);
 }).listen(5191,'127.0.0.1',()=>console.log('Pruebas aisladas: http://localhost:5191/__field.html'));
