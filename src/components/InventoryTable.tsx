@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { ProductEditor } from './ProductEditor';
+import { UnregisteredEditor } from './UnregisteredEditor';
 import type { Product, ProductFilter } from '../types';
 import { productStatus, roundQuantity, validQuantity } from '../services/auditState';
+import { searchProducts } from '../services/productSearch';
 
 const labels = {
   missing: '↓ Faltante',
   surplus: '↑ Sobrante',
   match: '✓ Cuadrado',
   not_counted: 'Pendiente',
-  unregistered: '⚠ No registrado',
+  unregistered: '✕ No encontrado',
+  excluded: '⊘ Excluido',
 };
 
 const filters: { id: ProductFilter; title: string }[] = [
@@ -17,7 +20,8 @@ const filters: { id: ProductFilter; title: string }[] = [
   { id: 'surplus', title: '↑ Sobrantes' },
   { id: 'match', title: '✓ Cuadrados' },
   { id: 'not_counted', title: 'Pendientes' },
-  { id: 'unregistered', title: '⚠ Nuevos' },
+  { id: 'unregistered', title: '✕ No encontrados' },
+  { id: 'excluded', title: '⊘ Excluidos' },
 ];
 
 const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
@@ -28,14 +32,23 @@ export function InventoryTable({
   readOnly = false,
   isAdmin = false,
   onUpdateProduct,
+  unregisteredActions,
 }: {
   products: Product[];
   readOnly?: boolean;
   isAdmin?: boolean;
   onUpdateProduct?: (code: string, patch: Partial<Pick<Product, 'department' | 'cost' | 'price'>>) => Promise<boolean>;
   onUpdateQuantity: (code: string, quantity: number) => void | Promise<boolean>;
+  unregisteredActions?: {
+    onEdit: (code: string, patch: { name?: string; note?: string }) => Promise<boolean>;
+    onExclude: (code: string, reason: string) => Promise<boolean>;
+    onRestore: (code: string) => Promise<boolean>;
+    onLink: (code: string, target: string) => Promise<boolean>;
+  };
 }) {
   const [metadataProduct, setMetadataProduct] = useState<Product | null>(null);
+  const [unregisteredCode, setUnregisteredCode] = useState<string | null>(null);
+  const unregisteredProduct = products.find(p => p.code === unregisteredCode);
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
   const [filter, setFilter] = useState<ProductFilter>('all');
@@ -47,11 +60,11 @@ export function InventoryTable({
   const departments = useMemo(() => [...new Set(products.map(p => p.department))].sort(), [products]);
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase('es');
-    return products.filter(p => 
-      (!query || `${p.code} ${p.description}`.toLocaleLowerCase('es').includes(query)) &&
+    // La búsqueda ignora acentos, mayúsculas y el orden de las palabras; los excluidos solo aparecen en su filtro.
+    const base = search.trim() ? searchProducts(products, search, { limit: Infinity }).map(r => r.product) : products;
+    return base.filter(p =>
       (!department || p.department === department) &&
-      (filter === 'all' || (filter === 'unregistered' ? p.isUnregistered : productStatus(p) === filter))
+      (filter === 'excluded' ? Boolean(p.excludedAt) : !p.excludedAt && (filter === 'all' || (filter === 'unregistered' ? p.isUnregistered : productStatus(p) === filter)))
     );
   }, [products, search, department, filter]);
 
@@ -78,6 +91,7 @@ export function InventoryTable({
 
   return (
     <section aria-label="Productos del inventario">
+      {unregisteredProduct && unregisteredActions && <UnregisteredEditor product={unregisteredProduct} products={products} onClose={() => setUnregisteredCode(null)} {...unregisteredActions} />}
       {metadataProduct && onUpdateProduct && <ProductEditor product={metadataProduct} departments={departments} isAdmin={isAdmin} onSave={onUpdateProduct} onClose={() => setMetadataProduct(null)} />}
       {/* Barra de Búsqueda y Filtros con estilo Swatch */}
       <div className="inventory-toolbar">
@@ -87,7 +101,7 @@ export function InventoryTable({
             type="search"
             name="search"
             autoComplete="off"
-            placeholder="Descripción o código de barras…"
+            placeholder="Descripción, código o clave…"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); setEditing(null); }}
           />
@@ -146,8 +160,12 @@ export function InventoryTable({
               <div className="product-info">
                 <code>{p.code}</code>
                 <h3>{p.description}</h3>
-                <span>{p.department}</span>
-                {onUpdateProduct && <button disabled={readOnly} className="product-edit-button" onClick={() => setMetadataProduct(p)}>{isAdmin ? "Editar producto" : "Cambiar departamento"}</button>}
+                <span>{p.department}{p.sku ? ` · Clave ${p.sku}` : ''}</span>
+                {p.isUnregistered && p.note && <small className="product-note">Nota: {p.note}</small>}
+                {p.excludedAt && <small className="product-note">Excluido: {p.excludedReason}</small>}
+                {p.isUnregistered
+                  ? unregisteredActions && <button disabled={readOnly} className="product-edit-button" onClick={() => setUnregisteredCode(p.code)}>{p.excludedAt ? 'Ver o reincorporar' : 'Gestionar no encontrado'}</button>
+                  : onUpdateProduct && <button disabled={readOnly} className="product-edit-button" onClick={() => setMetadataProduct(p)}>{isAdmin ? "Editar producto" : "Cambiar departamento"}</button>}
               </div>
 
               <div className="stock-cell">
@@ -165,15 +183,13 @@ export function InventoryTable({
                 <span className="status-label">{labels[state]}</span>
                 {(state === 'missing' || state === 'surplus') && (
                   <small className="font-bold">
-                    {difference > 0 ? '+' : ''}{difference} pzas · {money.format(difference * (p.cost || p.price))} {p.cost === 0 ? "(a precio venta)" : "(al costo)"}
+                    {difference > 0 ? '+' : ''}{difference} pzas · {money.format(difference * p.price)} a precio de venta
                   </small>
                 )}
-                {p.isUnregistered && state === 'not_counted' && (
-                  <small className="text-[#FF6E42]">⚠ No registrado</small>
-                )}
+
               </div>
 
-              <fieldset className="quantity-cell workspace-fields" disabled={readOnly}>
+              <fieldset className="quantity-cell workspace-fields" disabled={readOnly || Boolean(p.excludedAt)}>
                 {editing === p.code ? (
                   <form
                     onSubmit={e => { e.preventDefault(); save(p); }}

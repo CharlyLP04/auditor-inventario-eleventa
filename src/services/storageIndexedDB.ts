@@ -89,6 +89,18 @@ async function migrateWorkspace() {
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown) => typeof v === 'string' && v.length <= 10000;
 const date = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v));
+const ACTIONS = ['count', 'correct', 'undo', 'unregistered_add', 'unregistered_edit', 'unregistered_exclude', 'unregistered_restore', 'unregistered_link', 'import', 'reset', 'product_edit', 'status'];
+const count = (v: unknown) => Number.isInteger(v) && (v as number) >= 0;
+export function validActivity(value: unknown) {
+  return value === undefined || (Array.isArray(value) && value.length <= 50000 && value.every(e => object(e) && text(e.id) && date(e.at) && text(e.actor)
+    && ACTIONS.includes(String(e.action)) && (e.code === undefined || text(e.code)) && (e.detail === undefined || text(e.detail))
+    && (e.quantity === undefined || Number.isFinite(e.quantity))));
+}
+export function validImportReport(value: unknown) {
+  return value === undefined || (object(value) && count(value.fileRows) && count(value.imported) && Array.isArray(value.issues) && value.issues.length <= 20000
+    && value.issues.every(i => object(i) && count(i.row) && text(i.reason)) && Array.isArray(value.headers) && value.headers.every(text)
+    && Array.isArray(value.unusedColumns) && Array.isArray(value.warnings) && object(value.mapping));
+}
 export function parseMasterBackup(raw: string): WorkspaceData {
   const root: unknown = JSON.parse(raw);
   if (!object(root) || root.format !== 'auditor-eleventa-master' || root.version !== 1 || !object(root.data)) throw new Error('No es un respaldo maestro compatible.');
@@ -106,7 +118,8 @@ export function parseMasterBackup(raw: string): WorkspaceData {
     if (!object(a) || !text(a.id) || !a.id || auditIds.has(a.id as string) || !ids.has(a.companyId as string)
       || !text(a.title) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(a.period)) || !date(a.createdAt)
       || !['in_progress', 'completed', 'closed'].includes(String(a.status)) || !validateProducts(a.products)
-      || (a.notes !== undefined && !text(a.notes)) || (a.completedAt !== undefined && !date(a.completedAt))) throw new Error('Auditoría inválida o sin empresa.');
+      || (a.notes !== undefined && !text(a.notes)) || (a.completedAt !== undefined && !date(a.completedAt))
+      || !validActivity(a.activity) || !validImportReport(a.importReport)) throw new Error('Auditoría inválida o sin empresa.');
     const periodKey = JSON.stringify([a.companyId, a.period]);
     if (periods.has(periodKey)) throw new Error('Hay dos auditorías de la misma empresa y mes.');
     periods.add(periodKey);

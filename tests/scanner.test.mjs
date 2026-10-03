@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { addUnregistered } from '../src/services/unregisteredProducts.ts';
 import { applyCount, revertCount, ScanCooldown, departmentStats, validatePin, requireAdmin } from '../src/services/scannerState.ts';
 const p = (extra = {}) => ({ code: '001', description: 'Leche', cost: 10, price: 15, department: 'Lácteos', theoreticalStock: 10, physicalStock: 0, counted: false, ...extra });
 test('count adds, replaces and confirms zero without mutating input', () => {
@@ -14,8 +15,8 @@ test('count rejects blank, negative, infinite, oversized and empty additions', (
  assert.throws(() => applyCount([p()], '', 1, 'add'));
  assert.throws(() => applyCount([p({physicalStock: 1e9})], '001', 1, 'add'));
 });
-test('unknown code can be assigned to the active zone and undone entirely', () => {
- const result = applyCount([p()], 'NEW', 12, 'add', 'Bodega');
+test('confirmed not-found code can be assigned to the active zone and undone entirely', () => {
+ const result = addUnregistered([p()], { code: 'NEW', quantity: 12, department: 'Bodega' });
  assert.equal(result.product.department, 'Bodega'); assert.equal(result.product.isUnregistered, true);
  assert.deepEqual(revertCount(result.products, result.undo), [p()]);
 });

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2, Shield, UserRound, KeyRound } from 'lucide-react';
-import type { Product, CountMode } from './types';
+import type { Product, CountMode, ImportReport } from './types';
 import { InventoryTable } from './components/InventoryTable';
 import { AuditContext } from './components/AuditContext';
 import { AuditSummary } from './components/AuditSummary';
@@ -12,6 +12,7 @@ import { StoreIcon, TicketIcon, CardStockIcon, GearSettingsIcon } from './compon
 import { calculateStats } from './services/auditState';
 import { PinAuthModal } from './components/PinAuthModal';
 import { DepartmentSummary } from './components/DepartmentSummary';
+import { CatalogVerification } from './components/CatalogVerification';
 import { useAuditStore } from './hooks/useAuditStore';
 
 const BarcodeScanner = lazy(() => import('./components/BarcodeScanner').then(m => ({ default: m.BarcodeScanner })));
@@ -46,7 +47,7 @@ export function App() {
 
   const handleScan = async (barcode: string, quantity = 1, mode: CountMode = 'add') => {
     if (busy || readOnly) { setNotice('Espera a que termine el guardado o abre una auditoría en curso.'); return null; }
-    const product = await store.recordCount(barcode, quantity, mode, store.scannerPreferences.activeZoneDepartment);
+    const product = await store.recordCount(barcode, quantity, mode);
     if (!product) return null;
     setLastScannedInfo({ code: product.code, description: product.description, quantity: product.physicalStock, theoretical: product.theoreticalStock, isNew: Boolean(product.isUnregistered) });
     setNotice(''); return product;
@@ -57,9 +58,15 @@ export function App() {
     return Boolean(product);
   };
 
-  const handleProductsLoaded = async (next: Product[]) => {
+  const handleRegisterUnregistered = async (input: Parameters<typeof store.registerUnregistered>[0]) => {
+    if (busy || readOnly) { setNotice('Espera a que termine el guardado o abre una auditoría en curso.'); return null; }
+    const product = await store.registerUnregistered(input);
+    if (product) { setLastScannedInfo({ code: product.code, description: product.description, quantity: product.physicalStock, theoretical: 0, isNew: true }); setNotice(''); }
+    return product;
+  };
+  const handleProductsLoaded = async (next: Product[], report?: ImportReport) => {
     if (error && !window.confirm('Hay un problema con el guardado actual. ¿Reemplazar el catálogo después de descargar tu respaldo?')) return;
-    if (await commit(next, true)) {
+    if (await commit(next, { action: 'import', report })) {
       setLastScannedInfo(null);
       setNotice('');
       setActiveTab('list');
@@ -68,7 +75,7 @@ export function App() {
 
   const reset = async () => {
     if (window.confirm('¿Reiniciar todos los conteos? El catálogo se conserva. Exporta antes si necesitas los resultados.')) {
-      if (await commit(productsRef.current.products.map(p => ({ ...p, physicalStock: 0, counted: false, lastScannedAt: undefined })))) {
+      if (await commit(productsRef.current.products.map(p => ({ ...p, physicalStock: 0, counted: false, lastScannedAt: undefined })), { action: 'reset' })) {
         setLastScannedInfo(null);
         setNotice('Conteos reiniciados.');
       }
@@ -187,7 +194,7 @@ export function App() {
           {activeTab === 'scanner' && (
             products.length && !readOnly ? (
               <div className="count-layout">
-                <BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={store.scannerPreferences}
+                <BarcodeScanner onScan={handleScan} onRegisterUnregistered={handleRegisterUnregistered} onRestoreUnregistered={store.restoreUnregisteredProduct} lastScannedInfo={lastScannedInfo} products={products} preferences={store.scannerPreferences}
                   onPreferencesChange={store.saveScannerPreferences} saving={busy} canUndo={store.canUndo} onUndo={async () => { const saved = await store.undoCount(); if (saved) setLastScannedInfo(null); return saved; }} />
                 <aside className="desktop-only">
                   <AuditSummary stats={stats} products={products} />
@@ -211,10 +218,11 @@ export function App() {
           )}
 
           {activeTab === 'list' && (
-            <InventoryTable products={products} onUpdateQuantity={handleUpdateQuantity} readOnly={busy || readOnly} isAdmin={isAdmin} onUpdateProduct={store.updateProduct} />
+            <InventoryTable products={products} onUpdateQuantity={handleUpdateQuantity} readOnly={busy || readOnly} isAdmin={isAdmin} onUpdateProduct={store.updateProduct}
+              unregisteredActions={{ onEdit: store.editUnregisteredProduct, onExclude: store.excludeUnregisteredProduct, onRestore: store.restoreUnregisteredProduct, onLink: store.linkUnregisteredProduct }} />
           )}
 
-          {activeTab === 'stats' && <><DepartmentSummary products={products} /><AuditSummary stats={stats} products={products} />{activeAudit && data && <MonthlyComparison current={activeAudit} audits={data.audits} />}</>}
+          {activeTab === 'stats' && <><CatalogVerification products={products} report={activeAudit?.importReport} /><DepartmentSummary products={products} /><AuditSummary stats={stats} products={products} />{activeAudit && data && <MonthlyComparison current={activeAudit} audits={data.audits} />}</>}
 
           {activeTab === 'upload' && isAdmin && (
             <fieldset className="workspace-fields" disabled={busy || readOnly}>

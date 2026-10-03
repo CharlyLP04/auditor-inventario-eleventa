@@ -12,7 +12,8 @@ const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN
 
 export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = [] }) => {
   const [selectedMode, setSelectedMode] = useState<'sale' | 'cost' | null>(null);
-  const mode = selectedMode ?? (products.some(p => !p.isUnregistered && p.cost === 0) ? 'sale' : 'cost');
+  // El precio de venta es la referencia principal; el costo queda disponible como consulta.
+  const mode = selectedMode ?? 'sale';
   const missingValue = mode === 'sale' ? stats.missingSaleValue : stats.missingCostValue;
   const surplusValue = mode === 'sale' ? stats.surplusSaleValue : stats.surplusCostValue;
   const percentage = stats.totalCatalog > 0 
@@ -37,7 +38,7 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
   const accuracyRate = countedRegistered > 0
     ? Math.round((stats.matchCount / countedRegistered) * 100)
     : null;
-  const zeroCostCount = products.filter(p => !p.isUnregistered && p.cost === 0).length;
+  const zeroCostCount = mode === 'cost' ? products.filter(p => !p.isUnregistered && p.cost === 0).length : 0;
 
   // Top 4 mermas más costosas
   const topLosses = useMemo(() => {
@@ -55,8 +56,8 @@ export const AuditSummary: React.FC<AuditSummaryProps> = ({ stats, products = []
   return (
     <div className="summary-panel flex flex-col gap-6 w-full max-w-5xl mx-auto animate-card-pop">
       <div className="filter-bar" aria-label="Modo de valoración">
-        <button aria-pressed={mode === 'sale'} onClick={() => setSelectedMode('sale')}>A Precio de Venta (PVP)</button>
-        <button aria-pressed={mode === 'cost'} onClick={() => setSelectedMode('cost')}>Al Costo (Inversión)</button>
+        <button aria-pressed={mode === 'sale'} onClick={() => setSelectedMode('sale')}>Precio de venta</button>
+        <button aria-pressed={mode === 'cost'} onClick={() => setSelectedMode('cost')}>Costo (referencia)</button>
       </div>
       {/* 1. Tarjeta Hero: Balance Financiero Ejecutivo */}
       <div className="relative bg-gradient-to-br from-[#202020] via-[#1A1A1A] to-[#121212] border border-white/15 rounded-[32px] p-6 sm:p-8 shadow-2xl overflow-hidden">

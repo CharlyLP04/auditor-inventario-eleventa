@@ -213,22 +213,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="dictamen-kpi-card kpi-loss">
             <span className="kpi-label">PÉRDIDA TOTAL POR MERMA</span>
             <strong className="kpi-number">
-              -${stats.missingCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              -${stats.missingSaleValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </strong>
-            <span className="kpi-sub">Al costo de adquisición</span>
+            <span className="kpi-sub">A precio de venta</span>
             <span className="kpi-sub-minor">
-              ${stats.missingSaleValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a precio venta ({stats.totalMissingPieces} piezas)
+              {stats.totalMissingPieces} piezas · ${stats.missingCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} al costo
             </span>
           </div>
 
           <div className="dictamen-kpi-card kpi-surplus">
             <span className="kpi-label">SOBRANTE REGISTRADO</span>
             <strong className="kpi-number">
-              +${stats.surplusCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              +${stats.surplusSaleValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </strong>
-            <span className="kpi-sub">Al costo de adquisición</span>
+            <span className="kpi-sub">A precio de venta</span>
             <span className="kpi-sub-minor">
-              ${stats.surplusSaleValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a precio venta ({stats.totalSurplusPieces} piezas)
+              {stats.totalSurplusPieces} piezas · ${stats.surplusCostValue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} al costo
             </span>
           </div>
 
@@ -323,7 +323,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <th style={{ textAlign: 'center', width: '95px' }}>Estado</th>
                   <th style={{ textAlign: 'right', width: '75px' }}>Costo</th>
                   <th style={{ textAlign: 'right', width: '75px' }}>P. Venta</th>
-                  <th style={{ textAlign: 'right', width: '85px' }}>Impacto</th>
+                  <th style={{ textAlign: 'right', width: '85px' }}>Impacto (venta)</th>
                 </tr>
               </thead>
               <tbody>
@@ -332,7 +332,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   const diff = isCounted(p) && !p.isUnregistered
                     ? roundQuantity(p.physicalStock - p.theoreticalStock)
                     : null;
-                  const impacto = diff !== null ? roundQuantity(diff * p.cost) : null;
+                  const impacto = diff !== null ? roundQuantity(diff * p.price) : null;
                   return (
                     <tr key={p.code}>
                       <td><code className="dictamen-code">{p.code}</code></td>
@@ -352,7 +352,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                             surplus: 'Sobrante',
                             match: 'Cuadrado',
                             not_counted: 'Sin contar',
-                            unregistered: 'No registrado',
+                            unregistered: 'No encontrado',
+                            excluded: 'Excluido',
                           }[status]}
                         </span>
                       </td>

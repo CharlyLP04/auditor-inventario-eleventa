@@ -82,7 +82,8 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
   const discrepanciaRows = products.map(p => {
     const diff = roundQuantity(p.physicalStock - p.theoreticalStock);
     let estado = 'CUADRADO';
-    if (p.isUnregistered) estado = 'NO REGISTRADO EN ELEVENTA';
+    if (p.excludedAt) estado = p.linkedTo ? `IDENTIFICADO COMO ${p.linkedTo}` : 'EXCLUIDO DEL CONTEO';
+    else if (p.isUnregistered) estado = 'NO REGISTRADO EN ELEVENTA';
     else if (!isCounted(p)) estado = 'SIN CONTAR';
     else if (diff < 0) estado = 'FALTANTE (MERMA)';
     else if (diff > 0) estado = 'SOBRANTE';
@@ -103,6 +104,7 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
       'Estado': estado,
       'Precio Mayoreo ($)': p.wholesalePrice ?? null,
       'Inventario Mínimo': p.minStock ?? null,
+      'Observación': [p.note, p.excludedReason].filter(Boolean).join(' · ') || null,
     };
   });
 
@@ -148,6 +150,7 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
     { 'Métrica': 'Productos Cuadrados al 100%', 'Valor': stats.matchCount },
     { 'Métrica': 'Productos con Diferencias', 'Valor': stats.missingCount + stats.surplusCount },
     { 'Métrica': 'Productos No Registrados en Catálogo', 'Valor': stats.unregisteredCount },
+    { 'Métrica': 'No encontrados excluidos del conteo (conservados como traza)', 'Valor': stats.excludedCount ?? 0 },
     { 'Métrica': 'Productos registrados con costo en cero (sin valoración al costo)', 'Valor': products.filter(p => !p.isUnregistered && p.cost === 0).length },
     { 'Métrica': 'Software y Certificación Oficial', 'Valor': 'Grid.mx · Pensamos en código. Creamos soluciones (https://grid.mx)' },
     { 'Métrica': 'Sistema Auditor', 'Valor': 'Auditor de Inventarios eleventa · Certificado oficial Grid.mx' },

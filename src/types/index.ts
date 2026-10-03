@@ -13,9 +13,30 @@ export interface Product {
   isUnregistered?: boolean; // Producto escaneado que no existía en el catálogo de eleventa
   counted?: boolean;
   lastScannedAt?: string;
+  sku?: string;            // Clave interna, cuando el archivo la trae además del código de barras
+  note?: string;           // Observación de un producto no encontrado
+  excludedAt?: string;     // Exclusión lógica de un no encontrado: se conserva para el historial
+  excludedReason?: string;
+  linkedTo?: string;       // Código del catálogo con el que se identificó después
 }
 
-export type ProductFilter = 'all' | 'missing' | 'surplus' | 'match' | 'not_counted' | 'unregistered';
+export type ProductFilter = 'all' | 'missing' | 'surplus' | 'match' | 'not_counted' | 'unregistered' | 'excluded';
+export type ProductStatus = 'not_counted' | 'unregistered' | 'excluded' | 'missing' | 'surplus' | 'match';
+
+export type ImportField = 'code' | 'sku' | 'description' | 'stock' | 'cost' | 'price' | 'wholesale' | 'minimum' | 'department' | 'unit';
+export type ColumnMapping = Record<ImportField, number>;
+export interface ImportIssue { row: number; code?: string; reason: string; }
+export interface ImportReport {
+  fileName?: string; importedAt?: string;
+  headerRow: number; headers: string[]; mapping: ColumnMapping;
+  fileRows: number; imported: number; issues: ImportIssue[];
+  unusedColumns: string[]; warnings: string[];
+}
+export interface ImportResult { products: Product[]; errors: string[]; issues: ImportIssue[]; report: ImportReport; }
+
+export type ActivityAction = 'count' | 'correct' | 'undo' | 'unregistered_add' | 'unregistered_edit' | 'unregistered_exclude'
+  | 'unregistered_restore' | 'unregistered_link' | 'import' | 'reset' | 'product_edit' | 'status';
+export interface ActivityEntry { id: string; at: string; actor: string; action: ActivityAction; code?: string; quantity?: number; detail?: string; }
 
 export interface AuditStats {
   totalCatalog: number;
@@ -33,16 +54,7 @@ export interface AuditStats {
   surplusCount: number;
   notCountedCount: number;
   unregisteredCount: number;
-}
-
-export interface ScanLog {
-  id: string;
-  code: string;
-  description: string;
-  quantityAdded: number;
-  newTotal: number;
-  timestamp: string;
-  isUnregistered: boolean;
+  excludedCount: number;
 }
 
 export interface Company {
@@ -53,6 +65,7 @@ export interface AuditRecord {
   id: string; companyId: string; title: string; period: string;
   status: 'in_progress' | 'completed' | 'closed'; createdAt: string; completedAt?: string;
   products: Product[]; stats: AuditStats; notes?: string;
+  importReport?: ImportReport; activity?: ActivityEntry[];
 }
 export interface AuditorProfile { serviceName: string; auditorName: string; letterhead: string; logo?: string; }
 export interface WorkspaceData {
@@ -64,7 +77,7 @@ export interface WorkspaceData {
 export type UserRole = 'admin' | 'auditor';
 export interface SecuritySettings { adminPin: string; }
 export interface ScannerPreferences {
-  highVisibility: boolean; speechEnabled: boolean; cooldownMs: number;
+  highVisibility: boolean; speechEnabled: boolean;
   scanMode: 'single' | 'batch' | 'ask_quantity'; batchQuantity: number; activeZoneDepartment?: string;
 }
 export type CountMode = 'add' | 'set';
