@@ -37,3 +37,4 @@ certs/
 tests/browser-results.json
 .firebase/
 firestore-debug.log*
+.cache/

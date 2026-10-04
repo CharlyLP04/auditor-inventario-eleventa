@@ -126,7 +126,7 @@ export function ExcelUploader({
   return (
     <section className="upload-panel animate-card-pop">
       <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-2xl bg-[#B38F6F]/20 text-[#B38F6F] flex items-center justify-center border border-[#B38F6F]/30">
+        <div className="w-10 h-10 rounded-2xl bg-[var(--app-muted)]/20 text-[var(--app-muted)] flex items-center justify-center border border-[var(--app-muted)]/30">
           <FileSpreadsheet size={22} />
         </div>
         <div>
@@ -139,11 +139,11 @@ export function ExcelUploader({
         Importa el archivo exportado desde <strong>F3 Productos</strong> o <strong>F4 Inventario</strong> de eleventa. Antes de reemplazar el catálogo verás qué se importará y qué filas tienen problemas.
       </p>
 
-      <label className="upload-target group cursor-pointer hover:border-[#FF6E42] transition-colors">
-        <div className="w-14 h-14 rounded-full bg-[#161616] text-[#B38F6F] group-hover:text-[#FF6E42] flex items-center justify-center mx-auto border border-white/10 shadow-lg transition-transform group-hover:scale-105">
+      <label className="upload-target group cursor-pointer hover:border-[var(--app-accent)] transition-colors">
+        <div className="w-14 h-14 rounded-full bg-[var(--app-bg)] text-[var(--app-muted)] group-hover:text-[var(--app-accent)] flex items-center justify-center mx-auto border border-white/10 shadow-lg transition-transform group-hover:scale-105">
           <Upload size={26} strokeWidth={2.4} />
         </div>
-        <span className="text-[#F2F1ED] font-black text-base group-hover:text-[#FF6E42] transition-colors">
+        <span className="text-[var(--app-pearl)] font-black text-base group-hover:text-[var(--app-accent)] transition-colors">
           {busy ? 'Analizando catálogo…' : file ? `Cambiar archivo (${file.name})` : 'Seleccionar archivo de eleventa'}
         </span>
         <input
@@ -164,14 +164,14 @@ export function ExcelUploader({
       </label>
 
       {busy && (
-        <div role="status" className="p-4 bg-[#262626] rounded-2xl border border-white/10 text-center text-sm font-bold text-[#FF6E42] animate-pulse">
+        <div role="status" className="p-4 bg-[#262626] rounded-2xl border border-white/10 text-center text-sm font-bold text-[var(--app-accent)] animate-pulse">
           Procesando catálogo en segundo plano…
         </div>
       )}
 
       {!!errors.length && (
         <div className="message warning" role="alert">
-          <p className="font-bold text-[#FF6E42]">No se pudo cargar el archivo:</p>
+          <p className="font-bold text-[var(--app-accent)]">No se pudo cargar el archivo:</p>
           <ul className="mt-2 space-y-1">{errors.map((error, i) => <li key={i}>{error}</li>)}</ul>
         </div>
       )}
@@ -220,8 +220,8 @@ export function ExcelUploader({
         </div>
       </div>}
 
-      <div className="message bg-[#161616] border border-white/10 p-4 rounded-2xl mt-4">
-        <strong className="text-[#B38F6F] block text-xs font-black uppercase tracking-wider mb-1">
+      <div className="message bg-[var(--app-bg)] border border-white/10 p-4 rounded-2xl mt-4">
+        <strong className="text-[var(--app-muted)] block text-xs font-black uppercase tracking-wider mb-1">
           Instrucciones de eleventa:
         </strong>
         <p className="text-xs text-[#a8a8a8] leading-relaxed">

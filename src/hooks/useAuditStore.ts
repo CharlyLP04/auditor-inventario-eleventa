@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Product, WorkspaceData, Company, AuditRecord, AuditorProfile, UserRole, ScannerPreferences, CountMode, ActivityEntry, ImportReport } from '../types';
 import { calculateStats, validateProducts } from '../services/auditState';
-import { initializeWorkspace, writeWorkspace, newAudit, parseMasterBackup, recoverWorkspace, readWorkspace, createId, LEGACY_KEY } from '../services/storageIndexedDB';
+import { initializeWorkspace, writeWorkspace, newAudit, parseMasterBackup, recoverWorkspace, readWorkspace, createId, LEGACY_KEY, currentWorkspaceUser } from '../services/storageIndexedDB';
 import type { PreparedDownload } from '../services/fileDownload';
 import { prepareDownload, startDownload, releaseDownload } from '../services/fileDownload';
 import { applyCount, revertCount, requireAdmin, validatePin, validPreferences, DEFAULT_SCANNER } from '../services/scannerState';
@@ -35,7 +35,12 @@ export function useAuditStore() {
   };
   useEffect(() => {
     let mounted = true;
-    initializeWorkspace().then(next => { if (mounted) adopt(next); }).catch(e => { if (mounted) setError(String(e.message)); });
+    initializeWorkspace().then(next => {
+      if (mounted) {
+        if (currentWorkspaceUser() && next.companies.length === 0) { roleRef.current = 'admin'; setRole('admin'); }
+        adopt(next);
+      }
+    }).catch(e => { if (mounted) setError(String(e.message)); });
     const leaving = (event: BeforeUnloadEvent) => { if (locked.current) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', leaving);
     return () => { mounted = false; if (backupRef.current) releaseDownload(backupRef.current); window.removeEventListener('beforeunload', leaving); };
@@ -117,7 +122,7 @@ export function useAuditStore() {
       if (file.size > 250 * 1024 * 1024) throw new Error('El respaldo supera 250 MB.');
       const restored = parseMasterBackup(await file.text());
       if (!window.confirm(`Reemplazar los datos locales por ${restored.companies.length} empresas y ${restored.audits.length} auditorías. Descarga primero tu respaldo actual. ¿Continuar?`)) return false;
-      return await change(d => { requireAdmin(roleRef.current); return { ...restored, security: d.security }; }, true);
+      return await change(d => { requireAdmin(roleRef.current); return { ...restored, security: restored.security ?? d.security }; }, true);
     } catch (e) { setError(e instanceof Error ? e.message : 'Respaldo inválido.'); return false; }
   };
   const recover = async () => {

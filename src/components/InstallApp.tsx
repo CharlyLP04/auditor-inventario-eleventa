@@ -40,16 +40,16 @@ export function InstallApp() {
 
   const standaloneIos = (navigator as Navigator & { standalone?: boolean }).standalone === true;
   if (!prompt && isIosBrowser() && !standaloneIos && !readDismissed()) return (
-    <aside className="fixed bottom-20 right-4 left-4 sm:left-auto sm:right-6 sm:w-96 z-30 rounded-2xl border border-[#f5c518]/60 bg-[#1E1E1E]/95 backdrop-blur-xl p-4 shadow-2xl" aria-labelledby="ios-install-title">
+    <aside className="fixed bottom-20 right-4 left-4 sm:left-auto sm:right-6 sm:w-96 z-30 rounded-2xl border border-[#f5c518]/60 bg-[var(--app-surface)]/95 backdrop-blur-xl p-4 shadow-2xl" aria-labelledby="ios-install-title">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <h4 id="ios-install-title" className="text-xs font-black text-[#F2F1ED] uppercase tracking-wider">Instala la app en tu iPhone</h4>
-          <p className="text-[12px] text-[#d6d0c8] mt-1 leading-relaxed">
+          <h4 id="ios-install-title" className="text-xs font-black text-[var(--app-pearl)] uppercase tracking-wider">Instala la app en tu iPhone</h4>
+          <p className="text-[0.75rem] text-[#d6d0c8] mt-1 leading-relaxed">
             En Safari, toca <strong>Compartir</strong> y luego <strong>Añadir a pantalla de inicio</strong>. Ábrela siempre desde ese icono: Safari puede borrar los datos de este sitio si pasan 7 días sin usarlo.
           </p>
         </div>
         <button onClick={() => { try { localStorage.setItem(IOS_DISMISS_KEY, '1'); } catch { /* Preferencia opcional. */ } setDismissed(true); }}
-          className="text-[#c4bcb2] hover:text-[#F2F1ED] p-1 rounded-full hover:bg-white/10 transition-colors" aria-label="Cerrar guía de instalación">
+          className="text-[#c4bcb2] hover:text-[var(--app-pearl)] p-1 rounded-full hover:bg-white/10 transition-colors" aria-label="Cerrar guía de instalación">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -59,20 +59,20 @@ export function InstallApp() {
   if (!prompt) return null;
 
   return (
-    <aside className="fixed bottom-20 right-4 left-4 sm:left-auto sm:right-6 sm:w-96 z-30 rounded-2xl border border-white/15 bg-[#1E1E1E]/95 backdrop-blur-xl p-4 shadow-2xl animate-card-pop">
+    <aside className="fixed bottom-20 right-4 left-4 sm:left-auto sm:right-6 sm:w-96 z-30 rounded-2xl border border-white/15 bg-[var(--app-surface)]/95 backdrop-blur-xl p-4 shadow-2xl animate-card-pop">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <h4 className="text-xs font-black text-[#F2F1ED] uppercase tracking-wider flex items-center gap-1.5">
-            <Download className="w-3.5 h-3.5 text-[#FF6E42]" />
+          <h4 className="text-xs font-black text-[var(--app-pearl)] uppercase tracking-wider flex items-center gap-1.5">
+            <Download className="w-3.5 h-3.5 text-[var(--app-accent)]" />
             Instalar App en el dispositivo
           </h4>
-          <p className="text-[11px] text-[#bdbdbd] font-medium mt-1 leading-relaxed">
+          <p className="text-[0.75rem] text-[#bdbdbd] font-medium mt-1 leading-relaxed">
             Instálala como aplicación nativa para escanear en pantalla completa sin barras de navegador.
           </p>
         </div>
         <button
           onClick={() => setDismissed(true)}
-          className="text-[#888888] hover:text-[#F2F1ED] p-1 rounded-full hover:bg-white/10 transition-colors"
+          className="text-[var(--app-muted)] hover:text-[var(--app-pearl)] p-1 rounded-full hover:bg-white/10 transition-colors"
           aria-label="Cerrar sugerencia de instalación"
         >
           <X className="w-4 h-4" />
@@ -80,7 +80,7 @@ export function InstallApp() {
       </div>
 
       <button
-        className="mt-3 w-full rounded-full bg-[#FF6E42] hover:bg-[#ff8560] py-2.5 px-4 font-black text-[#161616] uppercase tracking-wider text-[11px] shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
+        className="mt-3 w-full rounded-full bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] py-2.5 px-4 font-black text-[var(--app-bg)] uppercase tracking-wider text-[0.75rem] shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
         disabled={busy}
         onClick={async () => {
           setBusy(true);

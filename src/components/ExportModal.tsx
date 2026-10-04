@@ -95,7 +95,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       particleCount: 100,
       spread: 70,
       origin: { y: 0.7 },
-      colors: ['#FF6E42', '#B38F6F', '#F2F1ED', '#710014', '#004E72'],
+      colors: ['--app-accent', '--app-muted', '--app-pearl', '--app-danger', '--app-surplus'].map(token => getComputedStyle(document.documentElement).getPropertyValue(token).trim()),
       disableForReducedMotion: true,
     });
   };
@@ -329,7 +329,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <tbody>
                 {displayProducts.map(p => {
                   const status = productStatus(p);
-                  const diff = isCounted(p) && !p.isUnregistered
+                  const diff = isCounted(p) && !p.isUnregistered && !p.excludedAt && !p.linkedTo
                     ? roundQuantity(p.physicalStock - p.theoreticalStock)
                     : null;
                   const impacto = diff !== null ? roundQuantity(diff * p.price) : null;
@@ -341,7 +341,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         {p.department && <small className="dictamen-dept">{p.department}</small>}
                       </td>
                       <td style={{ textAlign: 'right' }}>{p.theoreticalStock}</td>
-                      <td style={{ textAlign: 'right' }}>{isCounted(p) ? p.physicalStock : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{isCounted(p) && !p.excludedAt && !p.linkedTo ? roundQuantity(p.physicalStock) : '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700 }}>
                         {diff !== null ? (diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '0') : '—'}
                       </td>
@@ -424,7 +424,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="grid-footer-cert">
             <div className="grid-footer-stamp">Dictamen Oficial Certificado</div>
             <div className="grid-footer-meta">
-              Sistema de Auditoría de Inventarios eleventa · <a href="https://grid.mx" target="_blank" rel="noreferrer">https://grid.mx</a>
+              Auditorías Grid.mx · Compatible con eleventa · <a href="https://grid.mx" target="_blank" rel="noreferrer">https://grid.mx</a>
             </div>
             <div className="grid-footer-time">
               Folio: GRD-MX-{audit?.id?.slice(0, 8).toUpperCase() || '2026'} · {new Date().toLocaleString('es-MX')}
@@ -440,16 +440,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       ref={dialogRef}
       aria-labelledby="export-title"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
-      className={`export-dialog fixed inset-0 z-50 m-auto max-h-[92dvh] overflow-y-auto rounded-[28px] border-0 bg-transparent p-3 text-[#F2F1ED] ${
+      className={`export-dialog fixed inset-0 z-50 m-auto max-h-[92dvh] overflow-y-auto rounded-[28px] border-0 bg-transparent p-3 text-[var(--app-pearl)] ${
         activeTab === 'preview' ? 'preview-mode-active' : ''
       }`}
     >
       {/* Vista 1: Opciones y Descargas */}
       {activeTab === 'options' && (
-        <div className="export-screen bg-[#1E1E1E] border border-white/10 rounded-[28px] max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 animate-card-pop mx-auto">
+        <div className="export-screen bg-[var(--app-surface)] border border-white/10 rounded-[28px] max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 animate-card-pop mx-auto">
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
-            <div id="export-title" className="flex items-center gap-2.5 text-[#F2F1ED] font-extrabold text-lg">
-              <div className="w-8 h-8 rounded-full bg-[#FF6E42]/20 text-[#FF6E42] flex items-center justify-center">
+            <div id="export-title" className="flex items-center gap-2.5 text-[var(--app-pearl)] font-extrabold text-lg">
+              <div className="w-8 h-8 rounded-full bg-[var(--app-accent)]/20 text-[var(--app-accent)] flex items-center justify-center">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
               Finalizar y Exportar Auditoría
@@ -457,37 +457,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <button
               aria-label="Cerrar exportación"
               onClick={onClose}
-              className="text-[#888888] hover:text-[#F2F1ED] p-2 rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+              className="text-[var(--app-muted)] hover:text-[var(--app-pearl)] p-2 rounded-full hover:bg-white/5 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Resumen en Swatch Cards */}
-          <div className="bg-[#161616] p-4 rounded-2xl border border-white/10 grid grid-cols-2 gap-3 text-xs">
+          <div className="bg-[var(--app-bg)] p-4 rounded-2xl border border-white/10 grid grid-cols-2 gap-3 text-xs">
             <div>
-              <span className="text-[#888888] font-bold">Total Productos:</span>
-              <div className="text-base font-black text-[#F2F1ED] mt-0.5">{stats.totalCatalog}</div>
+              <span className="text-[var(--app-muted)] font-bold">Total Productos:</span>
+              <div className="text-base font-black text-[var(--app-pearl)] mt-0.5">{stats.totalCatalog}</div>
             </div>
             <div>
-              <span className="text-[#888888] font-bold">Piezas Contadas:</span>
-              <div className="text-base font-black text-[#FF6E42] mt-0.5">{stats.totalPiecesPhysical}</div>
+              <span className="text-[var(--app-muted)] font-bold">Piezas Contadas:</span>
+              <div className="text-base font-black text-[var(--app-accent)] mt-0.5">{stats.totalPiecesPhysical}</div>
             </div>
             <div>
-              <span className="text-[#888888] font-bold">Pérdida por Merma:</span>
-              <div className="text-base font-black text-[#ff8a9e] mt-0.5">-${stats.missingCostValue.toFixed(2)}</div>
+              <span className="text-[var(--app-muted)] font-bold">Pérdida por Merma:</span>
+              <div className="text-base font-black text-[var(--app-danger)] mt-0.5">-${stats.missingCostValue.toFixed(2)}</div>
             </div>
             <div>
-              <span className="text-[#888888] font-bold">Productos Cuadrados:</span>
-              <div className="text-base font-black text-[#B38F6F] mt-0.5">{stats.matchCount}</div>
+              <span className="text-[var(--app-muted)] font-bold">Productos Cuadrados:</span>
+              <div className="text-base font-black text-[var(--app-muted)] mt-0.5">{stats.matchCount}</div>
             </div>
           </div>
 
-          <p className="text-xs text-[#B38F6F] font-semibold leading-relaxed">
+          <p className="text-xs text-[var(--app-muted)] font-semibold leading-relaxed">
             El reporte incluye todo el catálogo, aunque haya productos pendientes. El ajuste contiene únicamente los {adjustmentProducts.length} productos registrados con conteo confirmado.
           </p>
 
-          {exportError && <p role="alert" className="text-xs text-[#FF6E42] font-bold">{exportError}</p>}
+          {exportError && <p role="alert" className="text-xs text-[var(--app-accent)] font-bold">{exportError}</p>}
           {download && (
             <div className="text-xs text-[#CCCCCC] break-words" role="status">
               Archivo preparado. Si no comenzó la descarga, usa este enlace:
@@ -499,18 +499,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {/* Botón de Previsualizador */}
             <button
               onClick={() => setActiveTab('preview')}
-              className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#333333] active:scale-[0.98] text-[#F2F1ED] font-bold rounded-full border border-white/15 shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer text-xs"
+              className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#333333] active:scale-[0.98] text-[var(--app-pearl)] font-bold rounded-full border border-white/15 shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer text-xs"
             >
-              <Eye className="w-4 h-4 text-[#FF6E42]" />
+              <Eye className="w-4 h-4 text-[var(--app-accent)]" />
               Previsualizar dictamen oficial (PDF)
             </button>
 
             {/* Imprimir / Guardar como PDF directo */}
             <button
               onClick={handlePrint}
-              className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#303030] text-[#F2F1ED] text-xs font-bold rounded-full border border-white/10 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#303030] text-[var(--app-pearl)] text-xs font-bold rounded-full border border-white/10 flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-[#FF6E42]" />
+              <Printer className="w-4 h-4 text-[var(--app-accent)]" />
               Imprimir dictamen / Guardar como PDF
             </button>
 
@@ -518,7 +518,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <button
               disabled={products.length === 0}
               onClick={() => handleExportExcel('report')}
-              className="w-full py-4 px-6 bg-[#FF6E42] hover:bg-[#ff8560] active:scale-[0.98] text-[#161616] font-black rounded-full shadow-xl shadow-[#FF6E42]/25 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm uppercase tracking-wider"
+              className="w-full py-4 px-6 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] active:scale-[0.98] text-[var(--app-bg)] font-black rounded-full shadow-xl shadow-[var(--app-accent)]/25 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm uppercase tracking-wider"
             >
               <Download className="w-5 h-5 stroke-[2.5]" />
               Descargar reporte completo (.xlsx)
@@ -527,9 +527,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <button
               disabled={adjustmentProducts.length === 0}
               onClick={() => handleExportExcel('adjustment')}
-              className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#303030] text-[#F2F1ED] text-xs font-bold rounded-full border border-white/10 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              className="w-full py-3.5 px-6 bg-[#262626] hover:bg-[#303030] text-[var(--app-pearl)] text-xs font-bold rounded-full border border-white/10 flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
-              <FileSpreadsheet className="w-4 h-4 text-[#888888]" aria-hidden="true" />
+              <FileSpreadsheet className="w-4 h-4 text-[var(--app-muted)]" aria-hidden="true" />
               Descargar ajuste de inventario (.xlsx)
             </button>
             {adjustmentProducts.length === 0 && (
@@ -539,12 +539,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             )}
           </div>
 
-          <div className="bg-[#161616] border border-white/10 rounded-2xl p-4 text-xs text-[#CCCCCC] space-y-2">
-            <div className="font-bold text-[#B38F6F] flex items-center gap-2 uppercase tracking-wider text-[11px]">
-              <CheckCircle className="w-4 h-4 text-[#FF6E42]" />
+          <div className="bg-[var(--app-bg)] border border-white/10 rounded-2xl p-4 text-xs text-[#CCCCCC] space-y-2">
+            <div className="font-bold text-[var(--app-muted)] flex items-center gap-2 uppercase tracking-wider text-[0.75rem]">
+              <CheckCircle className="w-4 h-4 text-[var(--app-accent)]" />
               ¿Cómo aplicar el ajuste en eleventa?
             </div>
-            <p className="text-[#888888] leading-relaxed">
+            <p className="text-[var(--app-muted)] leading-relaxed">
               1. Descarga el ajuste y revisa las cantidades confirmadas.<br />
               2. Revisa la correspondencia de columnas en la opción de importación o ajuste de tu versión de eleventa.<br />
               3. Usa el archivo <strong>Ajuste_Inventario_eleventa</strong>, que contiene una sola hoja. Este programa no modifica automáticamente la base de datos de eleventa.
@@ -555,26 +555,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       {/* Vista 2: Previsualizador en Pantalla */}
       {activeTab === 'preview' && (
-        <div className="export-screen preview-container bg-[#1E1E1E] border border-white/10 rounded-[28px] max-w-4xl w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-4 animate-card-pop mx-auto">
+        <div className="export-screen preview-container bg-[var(--app-surface)] border border-white/10 rounded-[28px] max-w-4xl w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-4 animate-card-pop mx-auto">
           {/* Barra de herramientas de la vista previa */}
           <div className="preview-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
             <button
               onClick={() => setActiveTab('options')}
-              className="inline-flex items-center gap-1.5 text-xs text-[#CCCCCC] hover:text-[#F2F1ED] py-2 px-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs text-[#CCCCCC] hover:text-[var(--app-pearl)] py-2 px-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               Volver a opciones
             </button>
 
-            <div className="text-xs font-bold text-[#F2F1ED] flex items-center gap-2">
-              <Eye className="w-4 h-4 text-[#FF6E42]" />
+            <div className="text-xs font-bold text-[var(--app-pearl)] flex items-center gap-2">
+              <Eye className="w-4 h-4 text-[var(--app-accent)]" />
               Vista Previa del Dictamen Oficial (PDF)
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePrint}
-                className="py-2.5 px-4 bg-[#FF6E42] hover:bg-[#ff8560] text-[#161616] text-xs font-black rounded-full flex items-center gap-2 shadow-lg transition-transform active:scale-95 cursor-pointer"
+                className="py-2.5 px-4 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] text-[var(--app-bg)] text-xs font-black rounded-full flex items-center gap-2 shadow-lg transition-transform active:scale-95 cursor-pointer"
               >
                 <Printer className="w-4 h-4 stroke-[2.5]" />
                 Imprimir / Guardar como PDF
@@ -583,7 +583,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <button
                 aria-label="Cerrar ventana"
                 onClick={onClose}
-                className="text-[#888888] hover:text-[#F2F1ED] p-2 rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                className="text-[var(--app-muted)] hover:text-[var(--app-pearl)] p-2 rounded-full hover:bg-white/5 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -597,20 +597,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
           {/* Acciones al pie de la previsualización */}
           <div className="preview-footer-actions flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
-            <span className="text-xs text-[#888888]">
+            <span className="text-xs text-[var(--app-muted)]">
               {products.length} productos en este dictamen · Certificado por Grid.mx
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleExportExcel('report')}
-                className="py-2 px-4 bg-[#262626] hover:bg-[#303030] text-[#F2F1ED] text-xs font-semibold rounded-full border border-white/10 flex items-center gap-1.5 cursor-pointer"
+                className="py-2 px-4 bg-[#262626] hover:bg-[#303030] text-[var(--app-pearl)] text-xs font-semibold rounded-full border border-white/10 flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 Descargar Excel
               </button>
               <button
                 onClick={handlePrint}
-                className="py-2.5 px-5 bg-[#FF6E42] hover:bg-[#ff8560] text-[#161616] text-xs font-black rounded-full flex items-center gap-2 cursor-pointer shadow-md"
+                className="py-2.5 px-5 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] text-[var(--app-bg)] text-xs font-black rounded-full flex items-center gap-2 cursor-pointer shadow-md"
               >
                 <Printer className="w-4 h-4" />
                 Imprimir o Guardar PDF

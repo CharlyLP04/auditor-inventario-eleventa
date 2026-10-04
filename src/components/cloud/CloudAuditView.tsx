@@ -1,3 +1,4 @@
+import { transition } from '../../services/transition';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import { ArrowLeft, CloudOff, CloudUpload, CheckCircle2, Circle, Loader, LayoutGrid, ShieldCheck } from 'lucide-react';
@@ -26,9 +27,9 @@ const tabs: { id: Tab; title: string; label?: string; icon: typeof StoreIcon }[]
 
 // Preferencias del escáner en modo equipo: son de cada dispositivo, no se comparten.
 const PREFS_KEY = 'auditor_cloud_scanner';
-function useDevicePreferences(): [ScannerPreferences, (value: ScannerPreferences) => Promise<boolean>] {
-  const [prefs, setPrefs] = useState<ScannerPreferences>(() => { try { const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null'); return validPreferences(saved) ? saved : { ...DEFAULT_SCANNER }; } catch { return { ...DEFAULT_SCANNER }; } });
-  const save = async (value: ScannerPreferences) => { setPrefs(value); try { localStorage.setItem(PREFS_KEY, JSON.stringify(value)); } catch { /* Preferencia opcional. */ } return true; };
+function useDevicePreferences(uid: string): [ScannerPreferences, (value: ScannerPreferences) => Promise<boolean>] {
+  const [prefs, setPrefs] = useState<ScannerPreferences>(() => { try { const saved = JSON.parse(localStorage.getItem(`${PREFS_KEY}::${uid}`) ?? 'null'); return validPreferences(saved) ? saved : { ...DEFAULT_SCANNER }; } catch { return { ...DEFAULT_SCANNER }; } });
+  const save = async (value: ScannerPreferences) => { setPrefs(value); try { localStorage.setItem(`${PREFS_KEY}::${uid}`, JSON.stringify(value)); } catch { /* Preferencia opcional. */ } return true; };
   return [prefs, save];
 }
 
@@ -38,7 +39,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
 }) {
   const store = useCloudAudit(db, user, auditId);
   const [tab, setTab] = useState<Tab>('departments');
-  const [prefs, savePrefs] = useDevicePreferences();
+  const [prefs, savePrefs] = useDevicePreferences(user.uid);
   const [lastScannedInfo, setLastScannedInfo] = useState<{ code: string; description: string; quantity: number; theoretical: number; isNew: boolean } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [profile, setProfile] = useState<AuditorProfile | undefined>();
@@ -79,7 +80,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
     if (!product) throw new Error(`El código ${code} no está en esta auditoría.`);
     const outside = await confirmDepartment(product);
     if (outside === null) throw new Error(`No se contó: ${product.department} no es uno de tus departamentos. Tómalo en Departamentos o confirma para contarlo marcado.`);
-    const saved = store.recordCount(code, quantity, mode, outside);
+    const saved = await store.recordCount(code, quantity, mode, outside);
     setLastScannedInfo({ code: saved.code, description: saved.description, quantity: saved.physicalStock, theoretical: saved.theoreticalStock, isNew: Boolean(saved.isUnregistered) });
     return saved;
   };
@@ -97,7 +98,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
     {store.loading && <p role="status" className="message">Cargando catálogo…</p>}
 
     <nav className="app-nav cloud-nav" aria-label="Secciones de la auditoría">
-      {tabs.map(({ id, title, label, icon: Icon }) => <button key={id} aria-label={label} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}><Icon size={22} solid={tab === id} /><span>{title}</span></button>)}
+      {tabs.map(({ id, title, label, icon: Icon }) => <button key={id} aria-label={label} onClick={() => transition(() => setTab(id))} aria-current={tab === id ? 'page' : undefined}><Icon size={22} solid={tab === id} /><span>{title}</span></button>)}
     </nav>
 
     {tab === 'departments' && <DepartmentBoard store={store} user={user} members={members} online={online} products={products} readOnly={readOnly} />}
@@ -105,13 +106,13 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
       ? <p className="message">La auditoría está {audit.status === 'completed' ? 'completada' : 'cerrada'}. Un administrador puede reabrirla.</p>
       : <div className="count-layout">
         <BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={prefs} onPreferencesChange={savePrefs} canUndo={store.canUndo}
-          onUndo={async () => { const done = store.undo(); if (done) setLastScannedInfo(null); return done; }}
+          onUndo={async () => { const done = await store.undo(); if (done) setLastScannedInfo(null); return done; }}
           onRegisterUnregistered={async input => { const saved = store.register(input); setLastScannedInfo({ code: saved.code, description: saved.description, quantity: saved.physicalStock, theoretical: 0, isNew: true }); return saved; }}
           onRestoreUnregistered={async code => store.restoreUnregistered(code)} />
         <aside className="desktop-only"><AuditSummary stats={stats} products={products} /></aside>
       </div>)}
     {tab === 'list' && <InventoryTable products={products} readOnly={readOnly} isAdmin={false}
-      onUpdateQuantity={async (code, quantity) => { const product = products.find(p => p.code === code); if (!product) return false; const outside = await confirmDepartment(product); if (outside === null) return false; store.recordCount(code, quantity, 'set', outside); return true; }}
+      onUpdateQuantity={async (code, quantity) => { const product = products.find(p => p.code === code); if (!product) return false; const outside = await confirmDepartment(product); if (outside === null) return false; try { await store.recordCount(code, quantity, 'set', outside); return true; } catch (e) { store.setError(e instanceof Error ? e.message : 'No se guardó la corrección.'); return false; } }}
       unregisteredActions={{
         onEdit: async (code, patch) => store.editUnregistered(code, patch), onExclude: async (code, reason) => store.excludeUnregistered(code, reason),
         onRestore: async code => store.restoreUnregistered(code), onLink: async (code, target) => store.linkUnregistered(code, target),
@@ -142,7 +143,7 @@ function DepartmentBoard({ store, user, members, online, products, readOnly }: {
   const [busy, setBusy] = useState('');
   const progress = useMemo(() => {
     const map = new Map<string, { total: number; counted: number }>();
-    for (const p of products) { if (p.isUnregistered) continue; const row = map.get(p.department) ?? { total: 0, counted: 0 }; row.total++; if (isCounted(p)) row.counted++; map.set(p.department, row); }
+    for (const p of products) { if (p.isUnregistered || p.excludedAt || p.linkedTo) continue; const row = map.get(p.department) ?? { total: 0, counted: 0 }; row.total++; if (isCounted(p)) row.counted++; map.set(p.department, row); }
     return map;
   }, [products]);
   const act = async (name: string, action: () => Promise<boolean>) => { setBusy(name); await action(); setBusy(''); };
@@ -185,7 +186,7 @@ function DepartmentBoard({ store, user, members, online, products, readOnly }: {
 function PeopleProgress({ contributors, members, products }: { contributors: Record<string, string[]>; members: CloudMember[]; products: Product[] }) {
   const name = (uid: string) => members.find(m => m.uid === uid)?.name ?? 'Persona sin acceso';
   const perPerson = new Map<string, number>();
-  for (const people of Object.values(contributors)) for (const uid of people) perPerson.set(uid, (perPerson.get(uid) ?? 0) + 1);
+  for (const p of products.filter(p => !p.excludedAt && !p.linkedTo)) for (const uid of contributors[p.code] ?? []) perPerson.set(uid, (perPerson.get(uid) ?? 0) + 1);
   const shared = products.filter(p => (contributors[p.code]?.length ?? 0) > 1 && !p.excludedAt);
   return <section className="workspace-card people-progress" aria-labelledby="people-title">
     <h3 id="people-title">Avance por persona</h3>

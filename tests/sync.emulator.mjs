@@ -182,7 +182,7 @@ test('11 · al completar la auditoría ya no se aceptan capturas y el balance fi
   await assert.rejects(recordCapture(charly.db, charly.user, auditId, { code: '001', quantity: 1, mode: 'add', current: { physicalStock: 0 }, department: 'Lácteos' }).committed);
   const { products } = await state(charly);
   const stats = calculateStats(products);
-  assert.equal(stats.auditedCount, products.filter(p => !p.excludedAt && p.counted).length);
+  assert.equal(stats.auditedCount, products.filter(p => !p.excludedAt && !p.isUnregistered && p.counted).length);
   assert.ok(stats.totalPiecesPhysical > 0);
 });
 test('una auditoría local se sube a la nube con sus conteos sin tocar los datos locales', async () => {
@@ -195,11 +195,11 @@ test('una auditoría local se sube a la nube con sus conteos sin tocar los datos
   const companyId = await createCompany(oscar.db, oscar.user, { name: 'Tienda migrada' });
   const result = await uploadLocalAudit(oscar.db, oscar.user, { companyId, period: '2026-10', products: local });
   assert.equal(JSON.stringify(local), snapshot, 'los datos locales no se modifican');
-  assert.equal(result.migrated, 3); assert.equal(result.skippedExcluded, 1);
+  assert.equal(result.migrated, 3); assert.equal(result.skippedExcluded, 0);
   const { products } = await readAuditState(charly.db, result.auditId);
   const byCode = Object.fromEntries(products.map(p => [p.code, p]));
   assert.equal(byCode['001'].physicalStock, 12); assert.equal(byCode['002'].counted, false);
   assert.equal(byCode['101'].counted, true); assert.equal(byCode['101'].physicalStock, 0);
   assert.equal(byCode['NF-1'].isUnregistered, true); assert.equal(byCode['NF-1'].description, 'Caja sin etiqueta');
-  assert.equal(byCode['NF-2'], undefined);
+  assert.equal(byCode['NF-2'].excludedAt, '2026-10-01T10:00:00.000Z');
 });

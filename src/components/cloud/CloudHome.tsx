@@ -95,7 +95,7 @@ function UploadLocal({ db, user, companies, online, onCreated }: { db: Firestore
         try {
           const company = await resolveCompany(db, user, companyId, newName);
           const result = await uploadLocalAudit(db, user, { companyId: company, period: audit.period, products: audit.products, report: audit.importReport });
-          setMessage(`Se subieron ${result.migrated} productos contados${result.skippedExcluded ? `; ${result.skippedExcluded} excluidos se quedan solo en este dispositivo` : ''}.`);
+          setMessage(`Se subieron ${result.migrated} productos contados; se conservaron también los registros excluidos y vinculados.`);
           onCreated(result.auditId);
         } catch (e) { setMessage(authMessage(e)); } finally { setBusy(false); }
       }}>{online ? 'Subir a la nube' : 'Requiere conexión'}</button>
@@ -105,7 +105,6 @@ function UploadLocal({ db, user, companies, online, onCreated }: { db: Firestore
 }
 
 function Members({ db, user, members, online }: { db: Firestore; user: CloudUser; members: CloudMember[]; online: boolean }) {
-  const [uid, setUid] = useState(''), [name, setName] = useState(''), [email, setEmail] = useState(''), [role, setRole] = useState<'admin' | 'auditor'>('auditor');
   const [message, setMessage] = useState('');
   const save = async (target: string, data: Omit<CloudMember, 'uid'>) => {
     try { await saveMember(db, user, target, data); setMessage('Acceso actualizado.'); return true; } catch (e) { setMessage(authMessage(e)); return false; }
@@ -113,19 +112,10 @@ function Members({ db, user, members, online }: { db: Firestore; user: CloudUser
   return <section className="workspace-card cloud-admin" aria-labelledby="members-title">
     <h3 id="members-title"><UserPlus size={18} aria-hidden="true" /> Personas con acceso</h3>
     <ul className="cloud-members">{members.map(m => <li key={m.uid}>
-      <span><strong>{m.name}</strong><small>{m.email || m.uid} · {m.role === 'admin' ? 'Administrador' : 'Auditor'} · {m.active ? 'Activo' : 'Sin acceso'}</small></span>
+      <span><strong>{m.name}</strong><small>{m.name} · {m.role === 'admin' ? 'Administrador' : 'Auditor'} · {m.active ? 'Activo' : 'Sin acceso'}</small></span>
       {m.uid !== user.uid && <button className="secondary" disabled={!online} onClick={() => { void save(m.uid, { name: m.name, email: m.email, role: m.role, active: !m.active }); }}>{m.active ? 'Quitar acceso' : 'Dar acceso'}</button>}
     </li>)}</ul>
-    <form className="workspace-form" onSubmit={async e => { e.preventDefault(); if (await save(uid, { name, email, role, active: true })) { setUid(''); setName(''); setEmail(''); } }}>
-      <p>Crea la cuenta en la consola de Firebase (Authentication → Agregar usuario). Al entrar, la app le muestra su identificador; pégalo aquí.</p>
-      <fieldset className="workspace-fields workspace-form" disabled={!online}>
-        <label>Identificador (UID)<input required maxLength={128} value={uid} onChange={e => setUid(e.target.value)} /></label>
-        <label>Nombre<input required maxLength={200} value={name} onChange={e => setName(e.target.value)} /></label>
-        <label>Correo<input type="email" maxLength={320} value={email} onChange={e => setEmail(e.target.value)} /></label>
-        <label>Rol<select value={role} onChange={e => setRole(e.target.value as 'admin' | 'auditor')}><option value="auditor">Auditor</option><option value="admin">Administrador</option></select></label>
-        <button className="primary">Dar acceso</button>
-      </fieldset>
-    </form>
+    <p>Los compañeros crean su cuenta con nombre y contraseña. Activa su solicitud aquí para incorporarlos al equipo.</p>
     {message && <p role="status" className="message">{message}</p>}
   </section>;
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { transition } from '../services/transition';
 import { Building2, Plus, ArrowUpRight, ArrowRight, Download, Upload, ShieldCheck, Search, CalendarDays, FileCheck2, Fingerprint, ImagePlus, Save, MapPin, Phone, Pencil, Trash2, X } from 'lucide-react';
 import type { Company, AuditorProfile } from '../types';
 import { createId } from '../services/storageIndexedDB';
@@ -23,7 +24,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
   return <div className="company-manager clients-studio">
     <section className="clients-hero">
       <div className="clients-hero-copy">
-        <span className="studio-kicker"><span /> TU CARTERA. BAJO CONTROL.</span>
+        <span className="studio-kicker"><span /> AUDITORÍAS GRID.MX · CLIENTES</span>
         <h2>Grandes relaciones.<br /><em>Cuentas claras.</em></h2>
         <p>Cada negocio, su historia. Un solo lugar para gestionar tus clientes y dar seguimiento a cada auditoría.</p>
         <button className="primary studio-create" disabled={store.busy || !isAdmin} title={!isAdmin ? 'Requiere Administrador' : undefined} onClick={addCompany}><Plus size={18} aria-hidden="true" /> Agregar empresa <ArrowUpRight size={18} aria-hidden="true" /></button>
@@ -59,7 +60,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
       <div className="company-grid">
         {visibleCompanies.map((c, index) => {
           const latest = data.audits.filter(a => a.companyId === c.id).sort((a, b) => b.period.localeCompare(a.period))[0];
-          return <button className={`workspace-card company-card company-tone-${index % 3}`} key={c.id} aria-pressed={selected === c.id} onClick={() => setSelected(c.id)}>
+          return <button className={`workspace-card company-card company-tone-${index % 3}`} key={c.id} aria-pressed={selected === c.id} onClick={() => transition(() => setSelected(c.id))}>
             <span className="company-card-top"><span className="company-monogram">{c.name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase()}</span><ArrowUpRight size={21} aria-hidden="true" /></span>
             <strong>{c.name}</strong><span className="company-contact">{c.contactName || 'Contacto por completar'}</span>
             <span className="company-card-bottom"><small className={`company-status ${latest?.status ?? 'new'}`}><span />{latest ? statusLabel[latest.status] : 'Lista para comenzar'}</small><small>{latest?.period ?? 'Nueva'}</small></span>

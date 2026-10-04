@@ -335,19 +335,19 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
       </div>
       {quantityRequest && <QuantityKeypadModal code={quantityRequest.code} product={products.find(p => p.code === quantityRequest.code)} initialMode={quantityRequest.correction ? 'set' : 'add'} initialValue={quantityRequest.correction ? String(lastQuantity) : ''} onClose={() => { setQuantityRequest(null); resumeCamera(); }} onSave={async (quantity, mode) => { const saved = await persistCount(quantityRequest.code, quantity, mode, quantityRequest.warnings); if (saved) { cooldown.current.release(quantityRequest.code); cooldown.current.accept(quantityRequest.code); } return saved; }} />}
       {/* Visor de Cámara con Retícula y Láser Dinámico */}
-      <div className="relative bg-[#1A1A1A] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl min-h-[320px] flex flex-col items-center justify-center">
+      <div className="relative bg-[var(--app-surface)] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl min-h-[320px] flex flex-col items-center justify-center">
         {isScanning && <div className="scan-reticle" aria-hidden="true" />}
         {flash > 0 && <div key={flash} className={`scan-flash tone-${feedback?.tone ?? 'found'}`} aria-hidden="true" />}
         <div id="interactive-scanner-view" className="w-full h-full min-h-[300px]" />
 
         {/* Overlay cuando el escáner no está activo */}
         {!isScanning && (
-          <div className="absolute inset-0 bg-[#161616]/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center gap-5 z-10">
-            <div className="w-16 h-16 rounded-full bg-[#B38F6F]/20 text-[#B38F6F] flex items-center justify-center shadow-lg border border-[#B38F6F]/30">
+          <div className="absolute inset-0 bg-[var(--app-bg)]/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center gap-5 z-10">
+            <div className="w-16 h-16 rounded-full bg-[var(--app-muted)]/20 text-[var(--app-muted)] flex items-center justify-center shadow-lg border border-[var(--app-muted)]/30">
               <CameraIcon size={32} solid />
             </div>
             <div>
-              <h3 className="text-xl font-black text-[#F2F1ED] tracking-tight">Escáner Óptico de Barras</h3>
+              <h3 className="text-xl font-black text-[var(--app-pearl)] tracking-tight">Escáner Óptico de Barras</h3>
               <p className="text-xs text-[#a8a8a8] max-w-xs mt-1.5 font-medium leading-relaxed">
                 Apunta al código del producto (EAN-13, UPC, Code 128) para contar piezas automáticamente.
               </p>
@@ -355,7 +355,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
             <button
               disabled={busy}
               onClick={() => startScanning()}
-              className="px-8 py-4 bg-[#FF6E42] hover:bg-[#ff8560] active:scale-95 text-[#161616] font-black rounded-full shadow-xl shadow-[#FF6E42]/25 flex items-center gap-2.5 transition-all cursor-pointer text-sm uppercase tracking-wider"
+              className="px-8 py-4 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] active:scale-95 text-[var(--app-bg)] font-black rounded-full shadow-xl shadow-[var(--app-accent)]/25 flex items-center gap-2.5 transition-all cursor-pointer text-sm uppercase tracking-wider"
             >
               <CameraIcon size={20} solid />
               <span>{busy ? 'Iniciando sensor…' : 'Activar Cámara'}</span>
@@ -370,7 +370,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
               <button
                 onClick={toggleTorch}
                 className={`w-12 h-12 rounded-full backdrop-blur-xl flex items-center justify-center transition-all cursor-pointer shadow-lg ${
-                  torchOn ? 'bg-[#FF6E42] text-[#161616] ring-4 ring-[#FF6E42]/40' : 'bg-[#161616]/80 text-[#F2F1ED] border border-white/20'
+                  torchOn ? 'bg-[var(--app-accent)] text-[var(--app-bg)] ring-4 ring-[var(--app-accent)]/40' : 'bg-[var(--app-bg)]/80 text-[var(--app-pearl)] border border-white/20'
                 }`}
                 title="Linterna / Flash"
                 aria-label="Linterna"
@@ -382,7 +382,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
             <button
               disabled={busy || saving}
               onClick={stopScanning}
-              className="px-4 py-2 bg-[#710014] hover:bg-[#8e0019] text-[#F2F1ED] text-xs font-bold rounded-full backdrop-blur-md border border-white/20 shadow-lg cursor-pointer"
+              className="px-4 py-2 bg-[var(--app-danger-bg)] hover:bg-[#8e0019] text-[var(--app-pearl)] text-xs font-bold rounded-full backdrop-blur-md border border-white/20 shadow-lg cursor-pointer"
             >
               Detener
             </button>
@@ -400,7 +400,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
                 setSelectedCamera(e.target.value);
                 startScanning(e.target.value);
               }}
-              className="bg-[#161616]/90 backdrop-blur-xl text-xs font-bold text-[#F2F1ED] py-2 px-4 rounded-full border border-white/15 outline-none shadow-xl"
+              className="bg-[var(--app-bg)]/90 backdrop-blur-xl text-xs font-bold text-[var(--app-pearl)] py-2 px-4 rounded-full border border-white/15 outline-none shadow-xl"
             >
               {cameras.map(cam => (
                 <option key={cam.id} value={cam.id}>
@@ -435,8 +435,8 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
       </div>}
 
       {errorMessage && (
-        <div role="alert" className="flex items-center gap-2.5 p-4 bg-[#710014]/30 border border-[#710014] rounded-2xl text-[#F2F1ED] text-xs font-semibold">
-          <AlertCircle className="w-5 h-5 shrink-0 text-[#FF6E42]" />
+        <div role="alert" className="flex items-center gap-2.5 p-4 bg-[var(--app-danger-bg)]/30 border border-[var(--app-danger-bg)] rounded-2xl text-[var(--app-pearl)] text-xs font-semibold">
+          <AlertCircle className="w-5 h-5 shrink-0 text-[var(--app-accent)]" />
           <span>{errorMessage}</span>
         </div>
       )}
@@ -448,8 +448,8 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
           onClick={() => setScanMode('single')}
           className={`flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
             scanMode === 'single'
-              ? 'bg-[#B38F6F] text-[#161616] shadow-lg scale-[1.02]'
-              : 'text-[#a8a8a8] hover:text-[#F2F1ED]'
+              ? 'bg-[var(--app-muted)] text-[var(--app-bg)] shadow-lg scale-[1.02]'
+              : 'text-[#a8a8a8] hover:text-[var(--app-pearl)]'
           }`}
         >
           <Plus className="w-4 h-4 stroke-[3]" />
@@ -460,8 +460,8 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
           onClick={() => setScanMode('batch')}
           className={`flex items-center justify-center gap-2 py-3 px-4 rounded-full text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
             scanMode === 'batch'
-              ? 'bg-[#FF6E42] text-[#161616] shadow-lg scale-[1.02]'
-              : 'text-[#a8a8a8] hover:text-[#F2F1ED]'
+              ? 'bg-[var(--app-accent)] text-[var(--app-bg)] shadow-lg scale-[1.02]'
+              : 'text-[#a8a8a8] hover:text-[var(--app-pearl)]'
           }`}
         >
           <Layers className="w-4 h-4 stroke-[2.5]" />
@@ -473,7 +473,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
       {/* Configuración de Caja / Paquete si está activo */}
       {scanMode === 'batch' && (
         <div className="flex flex-wrap gap-3 items-center justify-between bg-[#262626] border border-white/10 p-3.5 rounded-2xl animate-card-pop">
-          <span className="text-xs text-[#B38F6F] font-bold uppercase tracking-wider">Unidades por caja:</span>
+          <span className="text-xs text-[var(--app-muted)] font-bold uppercase tracking-wider">Unidades por caja:</span>
           <div className="flex items-center gap-2">
             {[6, 12, 24].map((qty) => (
               <button
@@ -482,8 +482,8 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
                 onClick={() => { setBatchDraft(null); void setBatchQuantity(qty); }}
                 className={`px-3 py-1.5 text-xs rounded-full font-black transition-all cursor-pointer ${
                   batchQuantity === qty
-                    ? 'bg-[#FF6E42] text-[#161616] shadow-md'
-                    : 'bg-[#161616] text-[#a8a8a8] hover:text-[#F2F1ED] border border-white/10'
+                    ? 'bg-[var(--app-accent)] text-[var(--app-bg)] shadow-md'
+                    : 'bg-[var(--app-bg)] text-[#a8a8a8] hover:text-[var(--app-pearl)] border border-white/10'
                 }`}
               >
                 +{qty}
@@ -498,7 +498,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
               value={batchDraft ?? batchQuantity}
               onChange={(e) => editBatchQuantity(e.target.value)}
               onBlur={() => setBatchDraft(null)}
-              className="w-16 text-center bg-[#161616] border border-[#FF6E42]/60 rounded-full py-1.5 text-sm font-black text-[#F2F1ED] focus:outline-none"
+              className="w-16 text-center bg-[var(--app-bg)] border border-[var(--app-accent)]/60 rounded-full py-1.5 text-sm font-black text-[var(--app-pearl)] focus:outline-none"
             />
           </div>
         </div>
@@ -536,11 +536,11 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
             placeholder="Código, clave o descripción…"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSearchNotice(''); }}
-            className="w-full bg-[#202020] border border-white/10 focus:border-[#FF6E42] text-[#F2F1ED] placeholder-[#9a9a9a] text-sm rounded-full py-3.5 pl-5 pr-28 outline-none transition-colors"
+            className="w-full bg-[var(--app-surface)] border border-white/10 focus:border-[var(--app-accent)] text-[var(--app-pearl)] placeholder-[#9a9a9a] text-sm rounded-full py-3.5 pl-5 pr-28 outline-none transition-colors"
           />
           <button
             type="submit"
-            className="absolute right-2 px-4 py-2 bg-[#FF6E42] hover:bg-[#ff8560] text-[#161616] text-xs font-black uppercase tracking-wider rounded-full flex items-center gap-1.5 cursor-pointer transition-colors shadow-md"
+            className="absolute right-2 px-4 py-2 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] text-[var(--app-bg)] text-xs font-black uppercase tracking-wider rounded-full flex items-center gap-1.5 cursor-pointer transition-colors shadow-md"
           >
             <Search className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
             Buscar

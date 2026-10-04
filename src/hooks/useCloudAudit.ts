@@ -34,7 +34,7 @@ export function useCloudWorkspace(db: Firestore, user: CloudUser) {
     const fail = (e: unknown) => setError(authMessage(e));
     const stops = [
       onSnapshot(collection(db, 'companies'), s => setCompanies(s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<CloudCompany, 'id'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
-      onSnapshot(collection(db, 'audits'), s => setAudits(s.docs.map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))), fail),
+      onSnapshot(collection(db, 'audits'), s => setAudits(s.docs.filter(d => d.data().status !== 'initializing').map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))), fail),
       onSnapshot(collection(db, 'members'), s => setMembers(s.docs.map(d => ({ uid: d.id, ...(d.data() as Omit<CloudMember, 'uid'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
     ];
     return () => stops.forEach(stop => stop());
@@ -81,12 +81,12 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     promise.catch(e => setError(authMessage(e))).finally(() => setPending(n => n - 1));
   }, []);
 
-  const recordCount = (code: string, quantity: number, mode: CountMode, outsideAssignment = false): Product => {
+  const recordCount = async (code: string, quantity: number, mode: CountMode, outsideAssignment = false): Promise<Product> => {
     const current = productsRef.current.find(p => p.code === code);
     if (!current) throw new Error(`El código ${code} no está en esta auditoría.`);
     if (current.excludedAt) throw new Error(`El código ${code} fue excluido del conteo. Reincorpóralo para volver a contarlo.`);
     const written = recordCapture(db, user, auditId, { code, quantity, mode, current, department: current.department, outsideAssignment });
-    track(written.committed);
+    if (mode === 'set') await written.committed; else track(written.committed);
     last.current = { captureId: written.captureId, code, delta: written.delta, department: current.department }; setCanUndo(true);
     return { ...current, physicalStock: written.total, counted: true, lastScannedAt: new Date().toISOString() };
   };
@@ -100,11 +100,12 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     last.current = { captureId: written.captureId, code, delta: input.quantity, department: input.department }; setCanUndo(true);
     return { code, description: existing?.description ?? (input.name?.trim() || `No encontrado ${code}`), note: input.note, cost: 0, price: 0, department: input.department || 'Sin clasificar', theoreticalStock: 0, physicalStock: (existing?.physicalStock ?? 0) + input.quantity, counted: true, isUnregistered: true };
   };
-  const undo = () => {
+  const undo = async () => {
     if (!last.current) return false;
-    track(undoCapture(db, user, auditId, last.current).committed);
-    last.current = null; setCanUndo(false);
-    return true;
+    try {
+      await undoCapture(db, user, auditId, last.current).committed;
+      last.current = null; setCanUndo(false); setError(''); return true;
+    } catch (e) { setError(authMessage(e)); return false; }
   };
   const optimistic = (promise: Promise<unknown>) => { track(promise); return true; };
   // Tomar o soltar un departamento exige leer el estado del servidor: se espera la respuesta y se informa el resultado.
@@ -115,11 +116,11 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     audit, products, departments, contributors, loading, error, setError, pending, canUndo,
     recordCount, register, undo,
     editUnregistered: (code: string, patch: { name?: string; note?: string }) => optimistic(editUnregistered(db, user, auditId, code, patch)),
-    excludeUnregistered: (code: string, reason: string) => optimistic(setUnregisteredExcluded(db, user, auditId, code, true, reason)),
-    restoreUnregistered: (code: string) => optimistic(setUnregisteredExcluded(db, user, auditId, code, false)),
+    excludeUnregistered: (code: string, reason: string) => awaited(() => setUnregisteredExcluded(db, user, auditId, code, true, reason)),
+    restoreUnregistered: (code: string) => awaited(() => setUnregisteredExcluded(db, user, auditId, code, false)),
     linkUnregistered: (code: string, target: string) => {
       const source = productsRef.current.find(p => p.code === code);
-      return source ? optimistic(linkUnregistered(db, user, auditId, code, target, source.physicalStock)) : false;
+      return source ? awaited(() => linkUnregistered(db, user, auditId, code, target, source.physicalStock)) : false;
     },
     claim: (name: string) => awaited(() => claimDepartment(db, user, auditId, name)),
     release: (name: string) => awaited(() => releaseDepartment(db, user, auditId, name)),

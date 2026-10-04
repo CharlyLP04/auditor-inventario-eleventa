@@ -9,7 +9,7 @@ const button = text => buttons().find(b => b.textContent.trim() === text || b.ge
 async function click(text) { const b = await wait(() => button(text), 'No existe: ' + text); assert(!b.disabled, 'Deshabilitado: ' + text); b.click(); await sleep(90); }
 function fill(el, text) { const proto = el.tagName === 'TEXTAREA' ? win().HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? win().HTMLSelectElement.prototype : win().HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, text); el.dispatchEvent(new (win().Event)(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); }
 async function submit(form) { form.requestSubmit(); await sleep(150); }
-async function read() { const db = await new Promise((resolve, reject) => { const r = indexedDB.open('AuditorEleventaDB'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); return new Promise((resolve, reject) => { const tx = db.transaction(['audits','app_settings']); const audits = tx.objectStore('audits').getAll(), settings = tx.objectStore('app_settings').get('workspace'); tx.oncomplete = () => { db.close(); resolve({ audits:audits.result, settings:settings.result }); }; tx.onabort = () => { db.close(); reject(tx.error); }; }); }
+async function read(user='campo') { const db = await new Promise((resolve, reject) => { const r = indexedDB.open(`auditor_eleventa_workspace_v2::${user}`); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); return new Promise((resolve, reject) => { const tx = db.transaction(['audits','app_settings']); const audits = tx.objectStore('audits').getAll(), settings = tx.objectStore('app_settings').get('workspace'); tx.oncomplete = () => { db.close(); resolve({ audits:audits.result, settings:settings.result }); }; tx.onabort = () => { db.close(); reject(tx.error); }; }); }
 async function stock(code) { return (await read()).audits[0]?.products.find(p => p.code === code)?.physicalStock; }
 async function scan(code) { const input = await wait(()=>doc().querySelector('[name=barcode]')); fill(input, code); await submit(input.form); }
 async function check(name, action) { try { await action(); results.push({ name, pass:true }); } catch (e) { results.push({ name, pass:false, error:e.message }); throw e; } finally { const li=document.createElement('li'), r=results.at(-1); li.className=r.pass?'ok':'fail'; li.textContent=(r.pass?'✓ ':'✕ ')+name+(r.error?' · '+r.error:''); document.querySelector('#results').append(li); } }
@@ -22,10 +22,26 @@ document.querySelector('#run').onclick = async () => {
   document.querySelector('#status').textContent='En ejecución…';
   try {
     frame?.remove();
-    await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase('AuditorEleventaDB'); r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('Cierra otras pestañas de pruebas en 5191'));});
+    for (const dbName of ['AuditorEleventaDB', 'GridAccounts', 'auditor_eleventa_workspace_v2::campo']) {
+      await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(dbName); r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('Cierra otras pestañas de pruebas en 5191'));});
+    }
+    localStorage.removeItem('grid_session_v1');
+    localStorage.removeItem('auditor_eleventa_products_v1_migrated');
     localStorage.setItem('auditor_eleventa_products_v1',JSON.stringify(seed));
     frame=document.createElement('iframe'); frame.width=1440;frame.height=950;frame.title='Aplicación aislada';frame.src='/';document.querySelector('#stage').append(frame);
-    await wait(()=>doc()?.querySelector('.company-manager'));win().confirm=()=>true;
+    await check('Inicio de sesión Auditorías Grid.mx y selector de escala A-/A/A+',async()=>{
+      await wait(()=>doc()?.querySelector('.grid-login'));
+      assert(doc().body.textContent.includes('Auditorías Grid.mx'),'Falta título Auditorías Grid.mx');
+      await click('Crear una cuenta nueva');
+      const inputs=[...doc().querySelectorAll('.grid-login input')];
+      fill(inputs[0],'campo'); fill(inputs[1],'Prueba-campo-2026!');
+      await submit(doc().querySelector('.grid-login form'));
+      await wait(()=>doc()?.querySelector('.company-manager'));
+      await click('A+'); await wait(()=>doc().documentElement.dataset.uiScale==='lg','Escala A+ no activa');
+      await click('A−'); await wait(()=>doc().documentElement.dataset.uiScale==='sm','Escala A- no activa');
+      await click('A'); await wait(()=>doc().documentElement.dataset.uiScale==='md','Escala A no activa');
+    });
+    win().confirm=()=>true;
     await check('Inicio en Auditor con operaciones administrativas bloqueadas',async()=>{
       assert(button('Auditor · Acceso admin'),'Rol inseguro');assert(!button('eleventa'),'Importación visible');assert(!button('Reiniciar conteo físico'),'Reset visible');assert(button('Agregar empresa').disabled,'Creación habilitada');
       assert([...doc().querySelectorAll('.identity-form input')].every(e=>e.matches(':disabled')),'Membrete editable');
@@ -62,7 +78,7 @@ document.querySelector('#run').onclick = async () => {
     await check('PIN inicial desbloquea Administrador y edición de precios',async()=>{await unlock();await wait(()=>button('Administrador · Bloquear'));assert(button('eleventa'),'Falta importación');assert(button('Reiniciar conteo físico'),'Falta reset');await click('Editar producto');fill(doc().querySelector('input[name=cost]'),'12.5');fill(doc().querySelector('input[name=price]'),'19');await click('Guardar producto');await wait(()=>!doc().querySelector('#product-editor-title'));assert((await read()).audits[0].products.find(p=>p.code==='FIELD001').cost===12.5,'Costo no guardado');});
     await check('Importación muestra vista previa y exige aceptar filas omitidas',async()=>{await click('eleventa');const input=await wait(()=>doc().querySelector('input[type=file][aria-label="Seleccionar archivo de inventario"]'));const transfer=new (win().DataTransfer)();transfer.items.add(new (win().File)(['Código,Descripción,Existencia,Precio Público,Marca\nP1,Uno,2,10,X\nP1,Duplicado,3,10,Y\nP2,Dos,muchos,10,Z\nP3,Tres,4,12,W\n'],'catalogo.csv',{type:'text/csv'}));input.files=transfer.files;input.dispatchEvent(new (win().Event)('change',{bubbles:true}));await wait(()=>doc().querySelector('.import-preview'),'Sin vista previa');const confirm=[...doc().querySelectorAll('.import-preview button')].find(b=>b.textContent.includes('Importar 2 productos'));assert(confirm?.disabled,'Permite importar sin aceptar las filas omitidas');assert(doc().querySelector('.import-preview').textContent.includes('Marca'),'No informa columnas sin usar');assert(doc().querySelectorAll('.import-issues li').length===2,'No lista las filas omitidas');doc().querySelector('.import-accept input').click();await wait(()=>!confirm.disabled,'La aceptación no habilita la importación');await click('Cancelar');assert((await read()).audits[0].products.some(p=>p.code==='FIELD001'),'Cancelar reemplazó el catálogo');});
     await check('Resumen por departamento conserva pendientes y desconocidos',async()=>{await click('Balance');await wait(()=>doc().querySelector('.department-grid'));assert(doc().querySelectorAll('.department-grid article').length===3,'Categorías incorrectas');const panel=doc().querySelector('.verification-panel');assert(panel,'Sin verificación del inventario');assert(panel.textContent.includes('Productos esperados')&&panel.textContent.includes('No encontrados agregados'),'Faltan cifras de verificación');assert(doc().querySelector('.summary-panel [aria-pressed=true]')?.textContent.includes('Precio de venta'),'El balance no prioriza el precio de venta');});
-    await check('Exportar no genera el dictamen imprimible completo hasta imprimir',async()=>{const total=(await read()).audits[0].products.length;const rows=()=>doc().querySelectorAll('.print-report .dictamen-table:not(.top-losses-table) tbody tr').length;await click('Terminar Auditoría');await wait(()=>doc().querySelector('dialog.export-dialog[open]'));assert(rows()===0,'Se generaron '+rows()+' filas sin imprimir');win().dispatchEvent(new (win().Event)('beforeprint'));await wait(()=>rows()===total,'Al imprimir hay '+rows()+' de '+total+' filas');win().dispatchEvent(new (win().Event)('afterprint'));await wait(()=>rows()===0,'El reporte siguió en el DOM tras imprimir');await click('Cerrar exportación');});
+    await check('Exportar no genera el dictamen imprimible completo hasta imprimir',async()=>{const total=(await read()).audits[0].products.length;const rows=()=>doc().querySelectorAll('.print-report .dictamen-table:not(.top-losses-table) tbody tr').length;await click('Terminar auditoría');await wait(()=>doc().querySelector('dialog.export-dialog[open]'));assert(rows()===0,'Se generaron '+rows()+' filas sin imprimir');win().dispatchEvent(new (win().Event)('beforeprint'));await wait(()=>rows()===total,'Al imprimir hay '+rows()+' de '+total+' filas');win().dispatchEvent(new (win().Event)('afterprint'));await wait(()=>rows()===0,'El reporte siguió en el DOM tras imprimir');await click('Cerrar exportación');});
     await check('Modo Auditor vuelve al recargar y mantiene los conteos',async()=>{frame.contentWindow.location.reload();await wait(()=>button('Auditor · Acceso admin'));assert(!button('eleventa'),'Privilegio persistió');assert(await stock('FIELD001')===2,'Conteo perdido');});
     await check('Voz usa el texto del resultado confirmado y se cancela al apagar',async()=>{await click('Contar');await wait(()=>button('Voz'));const said=[];Object.defineProperty(win(),'speechSynthesis',{configurable:true,value:{cancel(){},speak(u){said.push(u.text);}}});await click('Voz');await scan('FIELD001');await wait(()=>doc().querySelector('.quantity-dialog'));fill(doc().querySelector('[aria-label="Cantidad encontrada"]'),'15');await click('Guardar conteo');await wait(()=>said.length===1);assert(said[0].includes('17 piezas contadas'),'Voz no coincide con el total confirmado: '+said[0]);await click('Voz');});
     for(const width of [320,390,768,1024,1440]) await check('Sin desbordamiento horizontal en escáner y teclado a '+width+'px',async()=>{
@@ -88,6 +104,28 @@ document.querySelector('#run').onclick = async () => {
       } finally { reader.remove(); }
     });
     await check('Caché sin conexión contiene la interfaz, módulos diferidos y el logo del dictamen',async()=>{const name=(await (await fetch('/sw.js')).text()).match(/auditor-shell-[0-9a-f]+/)?.[0];assert(name,'El service worker no tiene versión de build');await wait(async()=>await win().navigator.serviceWorker.getRegistration(),'Este navegador no registró el service worker; verifica la caché en Chrome o Edge');await wait(async()=>await win().caches.has(name),'No se creó la caché '+name);const urls=(await (await win().caches.open(name)).keys()).map(r=>new URL(r.url).pathname);for(const part of ['/index.html','/grid-logo.png','importWorker','BarcodeScanner','ExportModal'])assert(urls.some(u=>u.includes(part)),'Falta en caché: '+part);});
+    await check('Cuentas locales aíslan datos por usuario y rechazan contraseña incorrecta',async()=>{
+      await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase('auditor_eleventa_workspace_v2::invitado'); r.onsuccess=resolve;r.onerror=()=>reject(r.error);});
+      await click('Cerrar sesión');
+      await wait(()=>doc()?.querySelector('.grid-login'));
+      await click('Crear una cuenta nueva');
+      let inputs=[...doc().querySelectorAll('.grid-login input')];
+      fill(inputs[0],'invitado'); fill(inputs[1],'Clave-invitado-99');
+      await submit(doc().querySelector('.grid-login form'));
+      await wait(()=>doc()?.querySelector('.company-manager'));
+      assert(!doc().body.textContent.includes('Empresa del conteo anterior'),'Datos de otra cuenta visibles en invitado');
+      await click('Cerrar sesión');
+      await wait(()=>doc()?.querySelector('.grid-login'));
+      inputs=[...doc().querySelectorAll('.grid-login input')];
+      fill(inputs[0],'campo'); fill(inputs[1],'Clave-incorrecta-00');
+      await submit(doc().querySelector('.grid-login form'));
+      await wait(()=>doc()?.querySelector('[role=alert]')?.textContent.includes('incorrectos'),'No rechazó contraseña incorrecta');
+      inputs=[...doc().querySelectorAll('.grid-login input')];
+      fill(inputs[1],'Prueba-campo-2026!');
+      await submit(doc().querySelector('.grid-login form'));
+      await wait(()=>doc()?.querySelector('.company-manager'));
+      assert(doc().body.textContent.includes('Empresa del conteo anterior'),'No restauró los datos del usuario campo');
+    });
   } catch (e) { console.error(e); if (!results.length || results.at(-1).pass) results.push({name:'Preparación del entorno',pass:false,error:e.message}); }
   const failures=results.filter(r=>!r.pass).length;
   document.querySelector('#status').textContent=failures ? `${failures} fallo(s). Revisa los resultados.` : `${results.length} verificaciones correctas.`;

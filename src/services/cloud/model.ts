@@ -58,7 +58,7 @@ export const contributorsOf = (buckets: BucketData[], code: string) => Object.ke
 export function assembleProducts(catalogChunks: Product[][], buckets: BucketData[], unregistered: UnregisteredDoc[]): Product[] {
   const { q, n } = mergeBuckets(buckets);
   const known = new Set<string>();
-  const counted = (code: string) => ({ physicalStock: roundQuantity(q[code] ?? 0), counted: (n[code] ?? 0) > 0 });
+  const counted = (code: string) => ({ physicalStock: Math.max(0, roundQuantity(q[code] ?? 0)), counted: (n[code] ?? 0) > 0 });
   const catalog = catalogChunks.flat().map(p => { known.add(p.code); return { ...p, ...counted(p.code) }; });
   const extra: Product[] = unregistered.map(doc => {
     known.add(doc.code);

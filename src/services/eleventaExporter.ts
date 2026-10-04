@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { Product, AuditStats, Company, AuditRecord, AuditorProfile } from '../types';
 
-import { isCounted, roundQuantity } from './auditState';
+import { isCounted, isExcluded, roundQuantity } from './auditState';
 import { prepareDownload } from './fileDownload';
 
 interface ReportContext { company?: Company; audit?: AuditRecord; profile?: AuditorProfile; }
@@ -16,24 +16,24 @@ function prepareWorkbook(wb: XLSX.WorkBook, fileName: string) {
   return prepareDownload(new Blob([data], { type: XLSX_MIME }), fileName);
 }
 
-export function createEleventaAdjustmentWorkbook(products: Product[]) {
-  const counted = products.filter(p => isCounted(p) && !p.isUnregistered);
-  if (!counted.length) throw new Error('Confirma el conteo de al menos un producto del catálogo para generar un ajuste.');
+function adjustmentSheet(products: Product[]) {
+  const counted = products.filter(p => isCounted(p) && !p.isUnregistered && !isExcluded(p));
+
 
   // Reproduce las columnas del catálogo real. Los respaldos antiguos no guardaban
   // mayoreo/mínimo: omitir columnas desconocidas evita sobrescribirlas con ceros.
-  const hasWholesale = counted.every(p => p.wholesalePrice !== undefined);
-  const hasMinimum = counted.every(p => p.minStock !== undefined);
+  const hasWholesale = counted.some(p => p.wholesalePrice !== undefined);
+  const hasMinimum = counted.some(p => p.minStock !== undefined);
   const headers = ['Codigo', 'Descripcion', 'Precio Costo', 'Precio Venta'];
   if (hasWholesale) headers.push('Precio Mayoreo');
   headers.push('Inventario');
   if (hasMinimum) headers.push('Inv. Minimo');
   headers.push('Departamento');
   const rows = counted.map(p => {
-    const row: (string | number)[] = [p.code, p.sourceDescription ?? p.description, p.cost, p.price];
-    if (hasWholesale) row.push(p.wholesalePrice!);
+    const row: (string | number | null)[] = [p.code, p.sourceDescription ?? p.description, p.cost, p.price];
+    if (hasWholesale) row.push(p.wholesalePrice ?? null);
     row.push(roundQuantity(p.physicalStock));
-    if (hasMinimum) row.push(p.minStock!);
+    if (hasMinimum) row.push(p.minStock ?? null);
     row.push(p.department);
     return row;
   });
@@ -43,6 +43,11 @@ export function createEleventaAdjustmentWorkbook(products: Product[]) {
     const code = sheet[XLSX.utils.encode_cell({ r, c: 0 })];
     code.t = 's'; code.z = '@';
   }
+  return sheet;
+}
+export function createEleventaAdjustmentWorkbook(products: Product[]) {
+  if (!products.some(p => isCounted(p) && !p.isUnregistered && !isExcluded(p))) throw new Error('Confirma el conteo de al menos un producto del catálogo para generar un ajuste.');
+  const sheet = adjustmentSheet(products);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, 'Ajuste_Inventario_eleventa');
   return workbook;
@@ -56,50 +61,30 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
   const wb = XLSX.utils.book_new();
 
   // HOJA 1: Formato listo para Importar / Ajustar en eleventa
-  const eleventaAjusteRows = products.filter(p => isCounted(p) && !p.isUnregistered).map(p => ({
-    'Código': p.code,
-    'Descripción': p.sourceDescription ?? p.description,
-    'Existencia': p.physicalStock,
-    'Costo': p.cost,
-    'Precio Venta': p.price,
-    'Departamento': p.department,
-    'Tipo': p.unitType || 'unidad',
-  }));
-
-  const wsEleventa = XLSX.utils.json_to_sheet(eleventaAjusteRows, { header: ['Código', 'Descripción', 'Existencia', 'Costo', 'Precio Venta', 'Departamento', 'Tipo'] });
-  wsEleventa['!cols'] = [
-    { wch: 18 },
-    { wch: 44 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 24 },
-    { wch: 12 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsEleventa, 'Ajuste_Inventario_eleventa');
+  XLSX.utils.book_append_sheet(wb, adjustmentSheet(products), 'Ajuste_Inventario_eleventa');
 
   // HOJA 2: Reporte de Auditoría y Discrepancias (Detalle de mermas y sobrantes)
   const discrepanciaRows = products.map(p => {
     const diff = roundQuantity(p.physicalStock - p.theoreticalStock);
     let estado = 'CUADRADO';
-    if (p.excludedAt) estado = p.linkedTo ? `IDENTIFICADO COMO ${p.linkedTo}` : 'EXCLUIDO DEL CONTEO';
+    if (isExcluded(p)) estado = p.linkedTo ? `IDENTIFICADO COMO ${p.linkedTo}` : 'EXCLUIDO DEL CONTEO';
     else if (p.isUnregistered) estado = 'NO REGISTRADO EN ELEVENTA';
     else if (!isCounted(p)) estado = 'SIN CONTAR';
     else if (diff < 0) estado = 'FALTANTE (MERMA)';
     else if (diff > 0) estado = 'SOBRANTE';
 
-    const impactoDinero = isCounted(p) && !p.isUnregistered ? roundQuantity(diff * p.cost) : null;
+    const impactoDinero = isCounted(p) && !p.isUnregistered && !isExcluded(p) ? roundQuantity(diff * p.cost) : null;
 
     return {
       'Código de Barras': p.code,
       'Descripción': p.description,
       'Departamento': p.department,
       'Stock Teórico (eleventa)': p.theoreticalStock,
-      'Stock Físico (Contado)': isCounted(p) ? p.physicalStock : null,
-      'Diferencia (Piezas)': isCounted(p) && !p.isUnregistered ? diff : null,
+      'Stock Físico (Contado)': isCounted(p) && !isExcluded(p) ? roundQuantity(p.physicalStock) : null,
+      'Diferencia (Piezas)': isCounted(p) && !p.isUnregistered && !isExcluded(p) ? diff : null,
       'Costo Unitario ($)': p.cost,
       'Impacto en $ (Costo)': impactoDinero,
-      'Impacto en $ (Venta)': isCounted(p) && !p.isUnregistered ? roundQuantity(diff * p.price) : null,
+      'Impacto en $ (Venta)': isCounted(p) && !p.isUnregistered && !isExcluded(p) ? roundQuantity(diff * p.price) : null,
       'Precio Venta ($)': p.price,
       'Estado': estado,
       'Precio Mayoreo ($)': p.wholesalePrice ?? null,
@@ -153,7 +138,7 @@ export function createAuditWorkbook(products: Product[], stats: AuditStats, now 
     { 'Métrica': 'No encontrados excluidos del conteo (conservados como traza)', 'Valor': stats.excludedCount ?? 0 },
     { 'Métrica': 'Productos registrados con costo en cero (sin valoración al costo)', 'Valor': products.filter(p => !p.isUnregistered && p.cost === 0).length },
     { 'Métrica': 'Software y Certificación Oficial', 'Valor': 'Grid.mx · Pensamos en código. Creamos soluciones (https://grid.mx)' },
-    { 'Métrica': 'Sistema Auditor', 'Valor': 'Auditor de Inventarios eleventa · Certificado oficial Grid.mx' },
+    { 'Métrica': 'Sistema Auditor', 'Valor': 'Auditorías Grid.mx · Compatible con eleventa' },
   ];
 
   const wsResumen = XLSX.utils.json_to_sheet(resumenRows);

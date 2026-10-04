@@ -69,7 +69,7 @@ test('captura y contador se escriben juntos; el contador no admite otros campos'
   const fs = db('aud1');
   const batch = writeBatch(fs);
   batch.set(doc(fs, 'audits/A1/captures/c9'), captureData('aud1', { delta: 3 }));
-  batch.update(doc(fs, 'audits/A1/counts/b0'), new FieldPath('q', '001'), increment(3), new FieldPath('n', '001'), increment(1), new FieldPath('u', '001', 'aud1'), increment(1));
+  batch.update(doc(fs, 'audits/A1/counts/b0'), new FieldPath('q', '001'), increment(3), new FieldPath('n', '001'), increment(1), new FieldPath('u', '001', 'aud1'), increment(1), 'lastCode', '001', 'lastCapture', 'c9');
   await assertSucceeds(batch.commit());
   await assertFails(updateDoc(doc(fs, 'audits/A1/counts/b0'), { owner: 'aud1' }));
 });

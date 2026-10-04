@@ -48,6 +48,17 @@ function detect(headers: string[]): ColumnMapping {
   return mapping;
 }
 export interface ParseOptions { mapping?: Partial<ColumnMapping>; }
+function textDelimiter(text: string) {
+  const counts: Record<string, number> = { ',': 0, ';': 0, '\t': 0 };
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') { if (quoted && text[i + 1] === '"') i++; else quoted = !quoted; }
+    else if (!quoted && (char === '\r' || char === '\n')) { if (Object.values(counts).some(Boolean)) break; }
+    else if (!quoted && char in counts) counts[char]++;
+  }
+  return Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+}
 function readWorkbook(fileBuffer: ArrayBuffer) {
   const bytes = new Uint8Array(fileBuffer);
   const prefix = bytes.subarray(0, 512);
@@ -60,7 +71,7 @@ function readWorkbook(fileBuffer: ArrayBuffer) {
   let text: string;
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
   catch { text = new TextDecoder('windows-1252').decode(bytes); }
-  return XLSX.read(text, { type: 'string', ...(prefix.includes(9) ? { FS: '\t' } : {}), raw: true, cellText: true, sheetRows: 20022 });
+  return XLSX.read(text, { type: 'string', FS: textDelimiter(text), raw: true, cellText: true, sheetRows: 20022 });
 }
 export function parseEleventaExcel(fileBuffer: ArrayBuffer, options: ParseOptions = {}): ImportResult {
   const workbook = readWorkbook(fileBuffer);

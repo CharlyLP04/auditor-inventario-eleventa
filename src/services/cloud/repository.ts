@@ -1,6 +1,7 @@
 import { doc, collection, getDoc, getDocs, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
-import type { Firestore, DocumentData, DocumentReference, WriteBatch } from 'firebase/firestore';
+import type { Firestore, DocumentData, DocumentReference, WriteBatch, Transaction } from 'firebase/firestore';
 import type { Product, CountMode, ImportReport } from '../../types';
+import { isCounted, roundQuantity, validQuantity } from '../auditState';
 import { BUCKETS, bucketOf, codeKey, departmentKey, splitCatalog, planCapture, assembleProducts, mergeBuckets } from './model';
 import type { BucketData, UnregisteredDoc } from './model';
 
@@ -33,14 +34,6 @@ const stamp = (user: CloudUser) => ({ updatedBy: user.uid, updatedAt: serverTime
 function logEvent(target: { set(ref: DocumentReference, data: DocumentData): unknown }, events: ReturnType<typeof auditRefs>['events'], user: CloudUser, type: string, detail: string) {
   target.set(doc(events), { by: user.uid, byName: user.name, at: serverTimestamp(), type, detail });
 }
-async function commitInChunks(db: Firestore, writes: ((batch: WriteBatch) => void)[]) {
-  for (let i = 0; i < writes.length; i += 450) {
-    const batch = writeBatch(db);
-    writes.slice(i, i + 450).forEach(write => write(batch));
-    await batch.commit();
-  }
-}
-
 export async function createCompany(db: Firestore, user: CloudUser, data: Omit<CloudCompany, 'id'>) {
   const ref = doc(collection(db, 'companies'));
   await setDoc(ref, clean({ ...data, name: data.name.trim(), createdBy: user.uid, createdAt: new Date().toISOString() }));
@@ -48,57 +41,70 @@ export async function createCompany(db: Firestore, user: CloudUser, data: Omit<C
 }
 
 /** Crea la auditoría con su catálogo, contadores y departamentos. El ID empresa_periodo impide duplicados. */
-export async function createCloudAudit(db: Firestore, user: CloudUser, input: { companyId: string; period: string; products: Product[]; report?: ImportReport }) {
+export async function createCloudAudit(db: Firestore, user: CloudUser, input: { companyId: string; period: string; products: Product[]; report?: ImportReport }, migrate = false) {
   if (user.role !== 'admin') throw new Error('Solo un administrador crea auditorías.');
   const auditId = `${input.companyId}_${input.period}`;
   const refs = auditRefs(db, auditId);
-  const duplicate = () => new Error('Ya existe una auditoría de esa empresa para ese mes. Ábrela desde la lista.');
-  if ((await getDoc(refs.audit)).exists()) throw duplicate();
-  const chunks = splitCatalog(input.products);
-  const departments = [...new Set(input.products.map(p => p.department))];
-  await commitInChunks(db, [
-    ...Array.from({ length: BUCKETS }, (_, b) => (batch: WriteBatch) => batch.set(doc(refs.counts, `b${b}`), { q: {}, n: {}, u: {} })),
-    ...chunks.map((products, index) => (batch: WriteBatch) => batch.set(doc(refs.catalog, String(index)), clean({ products }))),
-    ...departments.map(name => (batch: WriteBatch) => batch.set(doc(refs.departments, departmentKey(name)), { name, assignee: null, assigneeName: null, status: 'pending' })),
-  ]);
-  // La auditoría se publica al final: nadie la ve hasta que su catálogo completo está guardado.
+  const token = crypto.randomUUID();
+  // Cada intento toma una reserva. Las transacciones de los intentos anteriores dejan de escribir.
   await runTransaction(db, async tx => {
-    if ((await tx.get(refs.audit)).exists()) throw duplicate();
+    const existing = await tx.get(refs.audit);
+    if (existing.exists() && existing.data().status !== 'initializing') throw new Error('Ya existe una auditoría para esta empresa y mes.');
+    tx.set(refs.audit, { companyId: input.companyId, period: input.period, title: `Auditoría ${input.period}`, status: 'initializing', createdBy: user.uid, createdAt: new Date().toISOString(), creationToken: token });
+  });
+  const catalog = input.products.filter(p => !p.isUnregistered);
+  const chunks = splitCatalog(catalog);
+  const writes: ((tx: Transaction) => void)[] = [];
+  // Se eliminan restos de una carga interrumpida antes de repetir la importación.
+  const stale = await Promise.all([refs.catalog, refs.counts, refs.departments, refs.unregistered, refs.captures].map(ref => getDocs(ref)));
+  for (const snap of stale) for (const entry of snap.docs) writes.push(tx => tx.delete(entry.ref));
+  const buckets: BucketData[] = Array.from({ length: BUCKETS }, () => ({ q: {}, n: {}, u: {} }));
+  if (migrate) for (const p of input.products) {
+    if (isCounted(p)) {
+      const bucket = buckets[bucketOf(p.code)];
+      bucket.q[p.code] = roundQuantity(p.physicalStock); bucket.n[p.code] = 1; bucket.u[p.code] = { [user.uid]: 1 };
+      writes.push(tx => tx.set(doc(refs.captures, `migration_${codeKey(p.code)}`), {
+        code: p.code, delta: roundQuantity(p.physicalStock), mode: 'migrated', observed: null, by: user.uid, byName: user.name,
+        clientAt: p.lastScannedAt ?? new Date().toISOString(), at: serverTimestamp(), device: device(), department: p.department,
+      }));
+    }
+    if (p.isUnregistered) writes.push(tx => tx.set(doc(refs.unregistered, codeKey(p.code)), clean({
+      code: p.code, department: p.department, name: p.description, note: p.note, labels: {},
+      excluded: Boolean(p.excludedAt || p.linkedTo), excludedAt: p.excludedAt, reason: p.excludedReason, linkedTo: p.linkedTo,
+    })));
+  }
+  buckets.forEach((bucket, index) => writes.push(tx => tx.set(doc(refs.counts, `b${index}`), bucket)));
+  chunks.forEach((products, index) => writes.push(tx => tx.set(doc(refs.catalog, String(index)), clean({ products }))));
+  [...new Set(catalog.map(p => p.department))].forEach(name => writes.push(tx => tx.set(doc(refs.departments, departmentKey(name)), { name, assignee: null, assigneeName: null, status: 'pending' })));
+  for (let i = 0; i < writes.length; i += 350) await runTransaction(db, async tx => {
+    const current = await tx.get(refs.audit);
+    if (current.data()?.creationToken !== token || current.data()?.status !== 'initializing') throw new Error('Otra carga reemplazó este intento.');
+    writes.slice(i, i + 350).forEach(write => write(tx));
+  });
+  await runTransaction(db, async tx => {
+    const current = await tx.get(refs.audit);
+    if (current.data()?.creationToken !== token || current.data()?.status !== 'initializing') throw new Error('Otra carga reemplazó este intento.');
     const report = input.report ? { ...input.report, issues: input.report.issues.slice(0, 2000) } : undefined;
-    tx.set(refs.audit, clean({
-      companyId: input.companyId, period: input.period, title: `Auditoría ${input.period}`, status: 'in_progress', createdBy: user.uid, createdAt: new Date().toISOString(),
-      catalog: { chunks: chunks.length, products: input.products.length, importedAt: new Date().toISOString(), importedBy: user.name, fileName: input.report?.fileName, report },
-    }));
-    logEvent(tx, refs.events, user, 'import', `${input.products.length} productos${input.report?.issues.length ? `, ${input.report.issues.length} filas omitidas` : ''}`);
+    tx.update(refs.audit, clean({ status: 'in_progress', catalog: { chunks: chunks.length, products: catalog.length, importedAt: new Date().toISOString(), importedBy: user.name, fileName: input.report?.fileName, report } }));
+    logEvent(tx, refs.events, user, 'import', `${catalog.length} productos; ${migrate ? 'conteos e historial local incluidos' : 'catálogo nuevo'}`);
   });
   return auditId;
 }
 
-/**
- * Sube una auditoría guardada en este dispositivo: catálogo y cada producto contado como captura "migrated".
- * No modifica ni borra los datos locales. Los no encontrados excluidos se omiten (siguen en el respaldo local).
- */
 export async function uploadLocalAudit(db: Firestore, admin: CloudUser, input: { companyId: string; period: string; products: Product[]; report?: ImportReport }) {
-  const catalogProducts = input.products.filter(p => !p.isUnregistered);
-  const auditId = await createCloudAudit(db, admin, { companyId: input.companyId, period: input.period, products: catalogProducts, report: input.report });
-  const refs = auditRefs(db, auditId);
-  const counted = input.products.filter(p => (p.counted ?? (p.physicalStock > 0 || Boolean(p.lastScannedAt))) && !p.excludedAt);
-  for (let i = 0; i < counted.length; i += 150) {
-    const batch = writeBatch(db);
-    for (const p of counted.slice(i, i + 150)) {
-      addCapture(batch, db, admin, auditId, { code: p.code, delta: p.physicalStock, mode: 'migrated', observed: null, department: p.department });
-      if (p.isUnregistered) batch.set(doc(refs.unregistered, codeKey(p.code)), clean({ code: p.code, department: p.department, labels: { [admin.uid]: { name: p.description, note: p.note } } }), { merge: true });
-    }
-    await batch.commit();
-  }
-  return { auditId, migrated: counted.length, skippedExcluded: input.products.filter(p => p.excludedAt).length };
+  const auditId = await createCloudAudit(db, admin, input, true);
+  return { auditId, migrated: input.products.filter(isCounted).length, skippedExcluded: 0 };
 }
 
-interface CaptureInput { code: string; delta: number; mode: string; observed: number | null; department?: string; outsideAssignment?: boolean; voids?: string; countDelta?: number; }
+interface CaptureInput { captureId?: string; code: string; delta: number; mode: string; observed: number | null; department?: string; outsideAssignment?: boolean; voids?: string; countDelta?: number; }
 /** Agrega a un lote la captura y el incremento de su contador: o se aplican ambos o ninguno, también al salir de la cola sin conexión. */
-function addCapture(batch: WriteBatch, db: Firestore, user: CloudUser, auditId: string, input: CaptureInput) {
+interface CaptureWriter {
+  set(ref: DocumentReference, data: DocumentData): unknown;
+  update(ref: DocumentReference, field: string | FieldPath, value: unknown, ...more: unknown[]): unknown;
+}
+function addCapture(batch: CaptureWriter, db: Firestore, user: CloudUser, auditId: string, input: CaptureInput) {
   const refs = auditRefs(db, auditId);
-  const capture = doc(refs.captures);
+  const capture = input.captureId ? doc(refs.captures, input.captureId) : doc(refs.captures);
   batch.set(capture, {
     ...clean({
       code: input.code, delta: input.delta, mode: input.mode, observed: input.observed, by: user.uid, byName: user.name,
@@ -108,7 +114,7 @@ function addCapture(batch: WriteBatch, db: Firestore, user: CloudUser, auditId: 
     at: serverTimestamp(),
   });
   const countDelta = input.countDelta ?? 1;
-  batch.update(refs.bucket(input.code), new FieldPath('q', input.code), increment(input.delta), new FieldPath('n', input.code), increment(countDelta), new FieldPath('u', input.code, user.uid), increment(countDelta));
+  batch.update(refs.bucket(input.code), new FieldPath('q', input.code), increment(input.delta), new FieldPath('n', input.code), increment(countDelta), new FieldPath('u', input.code, user.uid), increment(countDelta), 'lastCode', input.code, 'lastCapture', capture.id);
   return capture.id;
 }
 function writeCapture(db: Firestore, user: CloudUser, auditId: string, input: CaptureInput, extra?: (batch: WriteBatch) => void) {
@@ -120,19 +126,41 @@ function writeCapture(db: Firestore, user: CloudUser, auditId: string, input: Ca
 
 export function recordCapture(db: Firestore, user: CloudUser, auditId: string, input: { code: string; quantity: number; mode: CountMode; current?: Pick<Product, 'physicalStock'>; department?: string; outsideAssignment?: boolean }) {
   const plan = planCapture(input.current ?? { physicalStock: 0 }, input.quantity, input.mode);
-  const written = writeCapture(db, user, auditId, { code: input.code, delta: plan.delta, mode: input.mode, observed: plan.observed, department: input.department, outsideAssignment: input.outsideAssignment });
-  return { ...written, delta: plan.delta, total: plan.total };
+  if (input.mode === 'add') {
+    const written = writeCapture(db, user, auditId, { code: input.code, delta: plan.delta, mode: input.mode, observed: plan.observed, department: input.department, outsideAssignment: input.outsideAssignment });
+    return { ...written, delta: plan.delta, total: plan.total };
+  }
+  const refs = auditRefs(db, auditId), captureId = doc(refs.captures).id;
+  const committed = runTransaction(db, async tx => {
+    const bucket = await tx.get(refs.bucket(input.code));
+    const current = roundQuantity(bucket.data()?.q?.[input.code] ?? 0);
+    if (current !== plan.observed) throw new Error('El conteo cambió en otro dispositivo. Revisa el total y vuelve a corregir.');
+    addCapture(tx, db, user, auditId, { code: input.code, delta: plan.delta, mode: 'set', observed: current, department: input.department, captureId });
+  });
+  return { captureId, committed, delta: plan.delta, total: plan.total };
 }
 
-/** Deshacer es otra captura con el delta inverso; resta también la captura del conteo para que un producto vuelva a "pendiente". */
 export function undoCapture(db: Firestore, user: CloudUser, auditId: string, last: { captureId: string; code: string; delta: number; department?: string }) {
-  return writeCapture(db, user, auditId, { code: last.code, delta: -last.delta, mode: 'undo', observed: null, department: last.department, voids: last.captureId, countDelta: -1 });
+  const refs = auditRefs(db, auditId), captureId = `undo_${last.captureId}`;
+  const committed = runTransaction(db, async tx => {
+    const [bucket, original, undone, source] = await Promise.all([
+      tx.get(refs.bucket(last.code)), tx.get(doc(refs.captures, last.captureId)), tx.get(doc(refs.captures, captureId)), tx.get(doc(refs.unregistered, codeKey(last.code))),
+    ]);
+    if (undone.exists()) throw new Error('Este conteo ya fue deshecho.');
+    if (!original.exists() || original.data().by !== user.uid || original.data().code !== last.code) throw new Error('No puedes deshacer esta captura.');
+    if (source.data()?.excluded || source.data()?.linkedTo) throw new Error('El producto fue excluido o vinculado; corrige el producto de destino.');
+    const delta = -original.data().delta;
+    const total = roundQuantity((bucket.data()?.q?.[last.code] ?? 0) + delta);
+    if (!validQuantity(total) || (bucket.data()?.n?.[last.code] ?? 0) < 1) throw new Error('El conteo cambió. Corrige la cantidad directamente.');
+    addCapture(tx, db, user, auditId, { code: last.code, delta, mode: 'undo', observed: total - delta, department: last.department, voids: last.captureId, countDelta: -1, captureId });
+  });
+  return { captureId, committed };
 }
 
 export function registerUnregistered(db: Firestore, user: CloudUser, auditId: string, input: { code: string; name?: string; note?: string; quantity: number; department?: string }) {
   const code = input.code.trim();
   if (!code || code.length > 128) throw new Error('El código debe tener entre 1 y 128 caracteres.');
-  if (!(input.quantity > 0)) throw new Error('Escribe una cantidad mayor que cero.');
+  if (!validQuantity(input.quantity) || !(input.quantity > 0)) throw new Error('Escribe una cantidad mayor que cero.');
   const refs = auditRefs(db, auditId);
   // set + merge: si el otro teléfono ya lo registró (aunque haya sido sin conexión), ambos convergen en el mismo documento.
   return writeCapture(db, user, auditId, { code, delta: input.quantity, mode: 'unregistered', observed: null, department: input.department }, batch => batch.set(doc(refs.unregistered, codeKey(code)), clean({
@@ -152,22 +180,33 @@ export function editUnregistered(db: Firestore, user: CloudUser, auditId: string
 
 export function setUnregisteredExcluded(db: Firestore, user: CloudUser, auditId: string, code: string, excluded: boolean, reason?: string) {
   const refs = auditRefs(db, auditId);
-  const batch = writeBatch(db);
-  batch.update(doc(refs.unregistered, codeKey(code)), {
-    excluded, excludedBy: excluded ? user.uid : null, excludedAt: excluded ? new Date().toISOString() : null,
-    reason: excluded ? (reason?.trim().slice(0, 1000) || 'Sin motivo registrado') : null, ...stamp(user),
+  return runTransaction(db, async tx => {
+    const ref = doc(refs.unregistered, codeKey(code));
+    const current = await tx.get(ref);
+    if (!current.exists()) throw new Error('No existe el registro.');
+    if (current.data().linkedTo) throw new Error('Sus piezas ya se transfirieron a otro producto.');
+    tx.update(ref, { excluded, excludedBy: excluded ? user.uid : null, excludedAt: excluded ? new Date().toISOString() : null,
+      reason: excluded ? (reason?.trim().slice(0, 1000) || 'Sin motivo registrado') : null, ...stamp(user) });
+    logEvent(tx, refs.events, user, excluded ? 'unregistered_exclude' : 'unregistered_restore', code);
   });
-  logEvent(batch, refs.events, user, excluded ? 'unregistered_exclude' : 'unregistered_restore', `${code}${excluded && reason ? ` · ${reason}` : ''}`);
-  return batch.commit();
 }
 
-/** Las piezas de un no encontrado pasan al producto real del catálogo; el registro queda excluido como traza. */
-export function linkUnregistered(db: Firestore, user: CloudUser, auditId: string, code: string, targetCode: string, quantity: number) {
+export async function linkUnregistered(db: Firestore, user: CloudUser, auditId: string, code: string, targetCode: string, quantity: number) {
   const refs = auditRefs(db, auditId);
-  return writeCapture(db, user, auditId, { code: targetCode, delta: quantity, mode: 'link', observed: null }, batch => {
-    batch.update(doc(refs.unregistered, codeKey(code)), { linkedTo: targetCode, excluded: true, excludedBy: user.uid, excludedAt: new Date().toISOString(), reason: `Identificado como ${targetCode}`, ...stamp(user) });
-    logEvent(batch, refs.events, user, 'unregistered_link', `${code} → ${targetCode} (${quantity})`);
-  }).committed;
+  const catalog = await getDocs(refs.catalog);
+  const targetChunk = catalog.docs.find(d => (d.data().products as Product[]).some(p => p.code === targetCode && !p.isUnregistered));
+  if (!targetChunk || code === targetCode) throw new Error('Selecciona un producto del catálogo.');
+  return runTransaction(db, async tx => {
+    const sourceRef = doc(refs.unregistered, codeKey(code));
+    const [source, sourceBucket, targetBucket, chunk] = await Promise.all([tx.get(sourceRef), tx.get(refs.bucket(code)), tx.get(refs.bucket(targetCode)), tx.get(targetChunk.ref)]);
+    if (!source.exists() || source.data().excluded || source.data().linkedTo) throw new Error('El registro ya fue excluido o vinculado.');
+    if (!(chunk.data()?.products as Product[] | undefined)?.some(p => p.code === targetCode && !p.isUnregistered)) throw new Error('El destino ya no existe en el catálogo.');
+    const current = roundQuantity(sourceBucket.data()?.q?.[code] ?? 0);
+    if (current !== quantity || !validQuantity(current) || !validQuantity(roundQuantity((targetBucket.data()?.q?.[targetCode] ?? 0) + current))) throw new Error('El conteo cambió o supera el límite. Revisa las cantidades.');
+    addCapture(tx, db, user, auditId, { code: targetCode, delta: current, mode: 'link', observed: null });
+    tx.update(sourceRef, { linkedTo: targetCode, excluded: true, excludedBy: user.uid, excludedAt: new Date().toISOString(), reason: `Identificado como ${targetCode}`, ...stamp(user) });
+    logEvent(tx, refs.events, user, 'unregistered_link', `${code} → ${targetCode} (${current})`);
+  });
 }
 
 async function updateDepartment(db: Firestore, user: CloudUser, auditId: string, name: string, change: (current: CloudDepartment) => Partial<CloudDepartment>, eventType: string) {

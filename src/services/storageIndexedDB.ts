@@ -4,11 +4,19 @@ import { calculateStats, validateProducts } from './auditState';
 export function createId() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''); }
 export const LEGACY_KEY = 'auditor_eleventa_products_v1';
 const initial = (): WorkspaceData => ({ companies: [], audits: [], activeAuditId: null, activeCompanyId: null, revision: 0, security: { adminPin: '1234' }, scannerPreferences: { ...DEFAULT_SCANNER },
-  profile: { serviceName: 'Servicio de auditoría de inventarios', auditorName: '', letterhead: '' } });
+  profile: { serviceName: 'Servicio de auditoría de inventarios', auditorName: workspaceUser, letterhead: '' } });
+let workspaceUser = '';
+export function selectWorkspaceUser(username: string) {
+  if (workspaceUser === username) return;
+  const previous = connection;
+  workspaceUser = username; connection = undefined; initialization = undefined;
+  void previous?.then(db => db.close()).catch(() => undefined);
+}
+export function currentWorkspaceUser() { return workspaceUser; }
 let connection: Promise<IDBDatabase> | undefined;
 function open() {
   if (!connection) connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('AuditorEleventaDB', 1);
+    const request = indexedDB.open(workspaceUser ? `auditor_eleventa_workspace_v2::${workspaceUser}` : 'AuditorEleventaDB', 1);
     request.onupgradeneeded = () => {
       const db = request.result;
       db.createObjectStore('companies', { keyPath: 'id' });
@@ -68,14 +76,17 @@ export async function recoverWorkspace() {
   const current = await readWorkspace();
   return current.revision ? current : writeWorkspace(current, 0);
 }
+const MIGRATED_KEY = 'auditor_eleventa_products_v1_migrated';
 async function migrateWorkspace() {
   let data = await readWorkspace();
   if (data.revision !== 0) return data;
-  const raw = localStorage.getItem(LEGACY_KEY);
+  const migratedTo = localStorage.getItem(MIGRATED_KEY);
+  const raw = (!workspaceUser || !migratedTo || migratedTo === workspaceUser) ? localStorage.getItem(LEGACY_KEY) : null;
   if (raw) {
     const products: unknown = JSON.parse(raw);
     if (!validateProducts(products)) throw new Error('El conteo anterior no es válido. Se conserva intacto; descarga un respaldo antes de continuar.');
     if (products.length) {
+      if (workspaceUser) localStorage.setItem(MIGRATED_KEY, workspaceUser);
       const company: Company = { id: createId(), name: 'Empresa del conteo anterior', createdAt: new Date().toISOString() };
       const today = new Date();
       const audit = newAudit(company.id, `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
@@ -130,5 +141,5 @@ export function parseMasterBackup(raw: string): WorkspaceData {
   if (d.activeAuditId !== null && d.audits.find(a => a.id === d.activeAuditId)?.companyId !== d.activeCompanyId) throw new Error('La auditoría activa no pertenece a la empresa seleccionada.');
   for (const k of ['serviceName', 'auditorName', 'letterhead']) if (!text(d.profile[k])) throw new Error('Membrete inválido.');
   if (d.profile.logo !== undefined && (typeof d.profile.logo !== 'string' || d.profile.logo.length > 1500000 || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(d.profile.logo))) throw new Error('Logotipo inválido.');
-  return { companies: d.companies as Company[], audits: d.audits as AuditRecord[], activeAuditId: d.activeAuditId as string | null, activeCompanyId: d.activeCompanyId as string | null, profile: d.profile as unknown as WorkspaceData['profile'], revision: 0, scannerPreferences: validPreferences(d.scannerPreferences) ? d.scannerPreferences : { ...DEFAULT_SCANNER } };
+  return { companies: d.companies as Company[], audits: d.audits as AuditRecord[], activeAuditId: d.activeAuditId as string | null, activeCompanyId: d.activeCompanyId as string | null, profile: d.profile as unknown as WorkspaceData['profile'], revision: 0, ...(object(d.security) ? { security: { adminPin: String(d.security.adminPin) } } : {}), scannerPreferences: validPreferences(d.scannerPreferences) ? d.scannerPreferences : { ...DEFAULT_SCANNER } };
 }

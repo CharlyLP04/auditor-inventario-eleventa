@@ -169,13 +169,13 @@ export function InventoryTable({
               </div>
 
               <div className="stock-cell">
-                <span className="mobile-only text-[#B38F6F] font-bold">En eleventa: </span>
+                <span className="mobile-only text-[var(--app-muted)] font-bold">En eleventa: </span>
                 <strong>{p.theoreticalStock}</strong><small>Mínimo: {p.minStock ?? "Sin dato"}</small>
               </div>
 
               <div className="price-cell"><span>Precio venta: </span><strong>{money.format(p.price)}</strong><small>Mayoreo: {p.wholesalePrice === undefined ? "Sin dato" : money.format(p.wholesalePrice)}</small></div>
               <div className="cost-cell">
-                <span className="mobile-only text-[#B38F6F] font-bold">Costo: </span>
+                <span className="mobile-only text-[var(--app-muted)] font-bold">Costo: </span>
                 {p.cost === 0 ? "Sin costo" : money.format(p.cost)}
               </div>
 
@@ -236,7 +236,7 @@ export function InventoryTable({
                       −
                     </button>
                     <button
-                      className="quantity-value hover:border-[#FF6E42] transition-colors"
+                      className="quantity-value hover:border-[var(--app-accent)] transition-colors"
                       aria-label={`Editar conteo de ${p.description}: ${p.physicalStock}`}
                       onClick={() => { setEditing(p.code); setDraft(String(p.physicalStock)); setError(''); }}
                       title="Toca para editar cantidad directamente"
@@ -260,12 +260,12 @@ export function InventoryTable({
       </div>
 
       {!visible.length && (
-        <div className="empty-state max-w-md mx-auto my-8 p-8 border border-white/10 rounded-[28px] bg-[#202020] text-center shadow-xl">
-          <div className="w-16 h-16 rounded-full bg-[#B38F6F]/20 text-[#B38F6F] flex items-center justify-center mx-auto mb-4 border border-[#B38F6F]/30">
+        <div className="empty-state max-w-md mx-auto my-8 p-8 border border-white/10 rounded-[28px] bg-[var(--app-surface)] text-center shadow-xl">
+          <div className="w-16 h-16 rounded-full bg-[var(--app-muted)]/20 text-[var(--app-muted)] flex items-center justify-center mx-auto mb-4 border border-[var(--app-muted)]/30">
             <span className="text-2xl">📋</span>
           </div>
-          <h3 className="text-lg font-black text-[#F2F1ED]">No hay productos en esta vista</h3>
-          <p className="text-xs text-[#888888] mt-2 leading-relaxed">
+          <h3 className="text-lg font-black text-[var(--app-pearl)]">No hay productos en esta vista</h3>
+          <p className="text-xs text-[var(--app-muted)] mt-2 leading-relaxed">
             {products.length
               ? 'No se encontraron coincidencias con la búsqueda o filtro actual.'
               : 'Para comenzar a auditar, carga tu catálogo exportado desde eleventa en la sección "eleventa".'}
@@ -282,7 +282,7 @@ export function InventoryTable({
           >
             Anterior
           </button>
-          <span className="font-bold text-[#F2F1ED]">{currentPage + 1} / {totalPages}</span>
+          <span className="font-bold text-[var(--app-pearl)]">{currentPage + 1} / {totalPages}</span>
           <button
             className="secondary"
             disabled={currentPage + 1 >= totalPages}

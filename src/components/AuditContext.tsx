@@ -1,3 +1,4 @@
+import { transition } from '../services/transition';
 import { useRef, useState } from 'react';
 import { Building2, ChevronDown, NotebookPen, Save, Check, LockKeyhole, CheckCircle2 } from 'lucide-react';
 import type { AuditRecord } from '../types';
@@ -51,7 +52,7 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
       </button>
     )}
     <>
-      <button type="button" ref={trigger} className="audit-notes-trigger" aria-expanded={open} aria-controls={`notes-panel-${audit.id}`} onClick={() => setOpen(value => !value)}>
+      <button type="button" ref={trigger} className="audit-notes-trigger" aria-expanded={open} aria-controls={`notes-panel-${audit.id}`} onClick={() => transition(() => setOpen(value => !value))}>
         <NotebookPen size={17} aria-hidden="true" /><span>{dirty ? 'Notas · sin guardar' : 'Notas'}</span>
         {Boolean(audit.notes?.trim()) && !dirty && <span className="notes-saved-mark" aria-label="Con notas guardadas"><Check size={12} aria-hidden="true" /></span>}
         <ChevronDown size={15} className="notes-chevron" aria-hidden="true" />

@@ -19,6 +19,7 @@ function serviceWorkerManifest(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  cacheDir: './.cache/vite',
   resolve: { preserveSymlinks: true },
   plugins: [
     react(),
@@ -31,3 +32,4 @@ export default defineConfig({
     strictPort: true,
   },
 })
+

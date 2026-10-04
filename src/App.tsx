@@ -1,5 +1,6 @@
+import { transition } from './services/transition';
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { RotateCcw, ShieldCheck, FileSpreadsheet, CheckCircle2, Shield, UserRound, KeyRound, Users } from 'lucide-react';
+import { RotateCcw, ShieldCheck, FileSpreadsheet, Shield, UserRound, KeyRound, Users } from 'lucide-react';
 import type { Product, CountMode, ImportReport } from './types';
 import { InventoryTable } from './components/InventoryTable';
 import { AuditContext } from './components/AuditContext';
@@ -92,8 +93,8 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
         <div className="brand">
           <BrandLogo size={44} />
           <div>
-            <h1>Auditor eleventa</h1>
-            <p><ShieldCheck size={13} aria-hidden="true" /> Inventario Físico · Alta Precisión</p>
+            <h1>Auditorías Grid<span className="grid-accent">.mx</span></h1>
+            <p><ShieldCheck size={13} aria-hidden="true" /> Pensamos en código. Creamos soluciones</p>
           </div>
         </div>
 
@@ -101,7 +102,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
           <select disabled={busy || !data} value={company?.id ?? ''} onChange={async e => {
             const companyId = e.target.value;
             const latest = data?.audits.filter(a => a.companyId === companyId).sort((a, b) => b.period.localeCompare(a.period))[0];
-            if (await store.selectCompany(companyId)) { setLastScannedInfo(null); setNotice(''); setActiveTab(latest ? 'list' : 'companies'); }
+            if (await store.selectCompany(companyId)) { transition(() => { setLastScannedInfo(null); setNotice(''); setActiveTab(latest ? 'list' : 'companies'); }); }
           }}><option value="" disabled>Selecciona empresa</option>{data?.companies.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
         </label>
         <div className="header-actions">
@@ -115,14 +116,6 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
           </button>
           {isAdmin && products.length > 0 && (
             <>
-              <button
-                className="primary finish-audit-btn"
-                onClick={() => setIsExportOpen(true)}
-                title="Terminar auditoría y generar dictamen oficial"
-              >
-                <CheckCircle2 size={16} aria-hidden="true" />
-                <span>Terminar Auditoría</span>
-              </button>
               <button
                 className="secondary p-2.5 rounded-full"
                 disabled={busy || readOnly}
@@ -144,7 +137,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
           return (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => transition(() => setActiveTab(id))}
               aria-current={isActive ? 'page' : undefined}
               className="relative group cursor-pointer"
             >
@@ -180,7 +173,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
         {notice && <p role="status" className="message">{notice}</p>}
         {store.backupDownload && (
           <p role="status" className="message">
-            Si tu navegador no inició la descarga automática: <a href={store.backupDownload.url} download={store.backupDownload.fileName} className="underline text-[#FF6E42] font-bold">Guardar {store.backupDownload.fileName}</a>
+            Si tu navegador no inició la descarga automática: <a href={store.backupDownload.url} download={store.backupDownload.fileName} className="underline text-[var(--app-accent)] font-bold">Guardar {store.backupDownload.fileName}</a>
           </p>
         )}
         {busy && <p role="status" className="message">Guardando en este dispositivo…</p>}
@@ -206,7 +199,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
               </div>
             ) : (
               <div className="empty-state max-w-xl mx-auto">
-                <div className="w-16 h-16 rounded-full bg-[#B38F6F]/20 text-[#B38F6F] flex items-center justify-center mx-auto mb-4 border border-[#B38F6F]/30">
+                <div className="w-16 h-16 rounded-full bg-[var(--app-muted)]/20 text-[var(--app-muted)] flex items-center justify-center mx-auto mb-4 border border-[var(--app-muted)]/30">
                   <FileSpreadsheet size={30} />
                 </div>
                 <h3>{readOnly ? "Abre una auditoría en curso" : "Carga tu catálogo para comenzar"}</h3>

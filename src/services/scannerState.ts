@@ -49,6 +49,6 @@ export class ScanCooldown {
 }
 export function departmentStats(products: Product[]) {
   const groups = new Map<string, Product[]>();
-  for (const p of products) { if (p.excludedAt) continue; const group = groups.get(p.department) ?? []; group.push(p); groups.set(p.department, group); }
+  for (const p of products) { if (p.excludedAt || p.linkedTo) continue; const group = groups.get(p.department) ?? []; group.push(p); groups.set(p.department, group); }
   return [...groups].map(([department, items]) => ({ department, stats: calculateStats(items) })).sort((a, b) => a.department.localeCompare(b.department, 'es'));
 }

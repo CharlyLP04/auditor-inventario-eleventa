@@ -1,7 +1,7 @@
 import type { Product, AuditStats, ProductStatus, ImportReport } from '../types';
 export const MAX_QUANTITY = 1_000_000_000;
 export const isCounted = (p: Product) => p.counted ?? (p.physicalStock > 0 || Boolean(p.lastScannedAt));
-export const isExcluded = (p: Product) => Boolean(p.excludedAt);
+export const isExcluded = (p: Product) => Boolean(p.excludedAt || p.linkedTo);
 export const roundQuantity = (value: number) => Math.round(value * 1e6) / 1e6;
 export const validQuantity = (value: number) => Number.isFinite(value) && value >= 0 && value <= MAX_QUANTITY;
 export function productStatus(p: Product): ProductStatus {
@@ -16,11 +16,11 @@ export function calculateStats(products: Product[]): AuditStats {
   for (const p of products) {
     // Un no encontrado excluido se conserva para el historial, pero no participa en ninguna cifra.
     if (isExcluded(p)) { stats.excludedCount++; continue; }
-    stats.totalCatalog++;
+    if (!p.isUnregistered) stats.totalCatalog++;
     stats.totalPiecesTheoretical += p.theoreticalStock;
     stats.totalPiecesPhysical += p.physicalStock;
     if (p.isUnregistered) stats.unregisteredCount++;
-    if (isCounted(p)) stats.auditedCount++; else stats.notCountedCount++;
+    if (!p.isUnregistered) { if (isCounted(p)) stats.auditedCount++; else stats.notCountedCount++; }
     const state = productStatus(p);
     const diff = roundQuantity(p.physicalStock - p.theoreticalStock);
     if (state === 'match') stats.matchCount++;
@@ -32,7 +32,7 @@ export function calculateStats(products: Product[]): AuditStats {
 }
 /** Cifras para comprobar que el catálogo se cargó completo y cuánto falta por contar. Solo usa precio de venta. */
 export function catalogVerification(products: Product[], report?: Pick<ImportReport, 'fileRows' | 'imported' | 'issues'>) {
-  const catalog = products.filter(p => !p.isUnregistered);
+  const catalog = products.filter(p => !p.isUnregistered && !isExcluded(p));
   const departments = new Map<string, boolean>();
   let found = 0, match = 0, missing = 0, surplus = 0, missingPrice = 0, expectedSaleValue = 0, countedSaleValue = 0, theoreticalPieces = 0, physicalPieces = 0;
   for (const p of catalog) {
