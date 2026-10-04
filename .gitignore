@@ -31,3 +31,9 @@ certs/
 .env
 .env.*
 !.env.example
+
+# Agent & test scratch
+.claude/
+tests/browser-results.json
+.firebase/
+firestore-debug.log*
