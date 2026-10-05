@@ -39,7 +39,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
 
     {message && <p role="status" className="message">{message}</p>}
     <fieldset disabled={store.busy} className="workspace-fields">
-      <div className="clients-section-heading"><div><span className="studio-kicker">01 / DIRECTORIO</span><h3>Tus empresas <span className="studio-count">{data.companies.length}</span></h3></div>
+      <div className="clients-section-heading"><div><span className="studio-kicker">DIRECTORIO ACTIVO</span><h3>Tus empresas <span className="studio-count">{data.companies.length}</span></h3></div>
         <label className="clients-search"><Search size={18} aria-hidden="true" /><input type="search" aria-label="Buscar empresa o contacto" placeholder="Buscar empresa o contacto…" value={search} onChange={e => setSearch(e.target.value)} /></label>
       </div>
       {isAdmin && editing && <form key={editing.id} className="workspace-card workspace-form company-edit-form" onSubmit={async e => {
@@ -69,7 +69,7 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
       </div>
       {!data.companies.length && <div className="clients-empty">
         <div className="empty-company-art" aria-hidden="true"><div className="empty-paper paper-back" /><div className="empty-paper paper-front"><Building2 size={30} /><span /><span /><i><Plus size={18} /></i></div></div>
-        <div><span className="studio-kicker">EL PRIMER PASO DE MUCHOS</span><h3>Tu próximo cliente<br />empieza aquí.</h3><p>Agrega una empresa, abre su auditoría mensual y convierte cada conteo en información valiosa.</p><button className="primary" disabled={!isAdmin} onClick={addCompany}>Crear mi primera empresa <ArrowRight size={17} aria-hidden="true" /></button></div>
+        <div><span className="studio-kicker">PRIMER PASO</span><h3>Tu próximo cliente<br />empieza aquí.</h3><p>Agrega una empresa, abre su auditoría mensual y convierte cada conteo en información valiosa.</p><button className="primary" disabled={!isAdmin} onClick={addCompany}>Crear mi primera empresa <ArrowRight size={17} aria-hidden="true" /></button></div>
       </div>}
       {data.companies.length > 0 && !visibleCompanies.length && <p className="message">No encontramos empresas con esa búsqueda.</p>}
       {company && <section className="workspace-card company-detail">
@@ -99,7 +99,7 @@ function ProfileEditor({ profile, save, disabled }: { profile: AuditorProfile; s
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
   return <section className="identity-studio">
-    <div className="clients-section-heading"><div><span className="studio-kicker">02 / TU IDENTIDAD</span><h3>Que tu trabajo lleve tu sello.</h3><p>Personaliza el membrete de tus dictámenes y reportes.</p></div><span className="identity-badge"><Fingerprint size={18} aria-hidden="true" /> Marca propia</span></div>
+    <div className="clients-section-heading"><div><span className="studio-kicker">MEMBRETE OFICIAL</span><h3>Que tu trabajo lleve tu sello.</h3><p>Personaliza el membrete de tus dictámenes y reportes.</p></div><span className="identity-badge"><Fingerprint size={18} aria-hidden="true" /> Marca propia</span></div>
     <div className="identity-layout">
       <form className="identity-form" onSubmit={async e => {
         e.preventDefault();
