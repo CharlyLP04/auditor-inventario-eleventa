@@ -335,10 +335,10 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
       </div>
       {quantityRequest && <QuantityKeypadModal code={quantityRequest.code} product={products.find(p => p.code === quantityRequest.code)} initialMode={quantityRequest.correction ? 'set' : 'add'} initialValue={quantityRequest.correction ? String(lastQuantity) : ''} onClose={() => { setQuantityRequest(null); resumeCamera(); }} onSave={async (quantity, mode) => { const saved = await persistCount(quantityRequest.code, quantity, mode, quantityRequest.warnings); if (saved) { cooldown.current.release(quantityRequest.code); cooldown.current.accept(quantityRequest.code); } return saved; }} />}
       {/* Visor de Cámara con Retícula y Láser Dinámico */}
-      <div className="relative bg-[var(--app-surface)] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl min-h-[320px] flex flex-col items-center justify-center">
+      <div className="relative bg-[var(--app-surface)] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl scanner-camera min-h-[260px] flex flex-col items-center justify-center">
         {isScanning && <div className="scan-reticle" aria-hidden="true" />}
         {flash > 0 && <div key={flash} className={`scan-flash tone-${feedback?.tone ?? 'found'}`} aria-hidden="true" />}
-        <div id="interactive-scanner-view" className="w-full h-full min-h-[300px]" />
+        <div id="interactive-scanner-view" className="w-full h-full min-h-[240px]" />
 
         {/* Overlay cuando el escáner no está activo */}
         {!isScanning && (
@@ -347,7 +347,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
               <CameraIcon size={32} solid />
             </div>
             <div>
-              <h3 className="text-xl font-black text-[var(--app-pearl)] tracking-tight">Escáner Óptico de Barras</h3>
+              <h3 className="text-xl font-black text-[var(--app-pearl)] tracking-tight">Escanear productos</h3>
               <p className="text-xs text-[#a8a8a8] max-w-xs mt-1.5 font-medium leading-relaxed">
                 Apunta al código del producto (EAN-13, UPC, Code 128) para contar piezas automáticamente.
               </p>
@@ -358,7 +358,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
               className="px-8 py-4 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] active:scale-95 text-[var(--app-bg)] font-black rounded-full shadow-xl shadow-[var(--app-accent)]/25 flex items-center gap-2.5 transition-all cursor-pointer text-sm uppercase tracking-wider"
             >
               <CameraIcon size={20} solid />
-              <span>{busy ? 'Iniciando sensor…' : 'Activar Cámara'}</span>
+              <span>{busy ? 'Abriendo cámara…' : 'Activar Cámara'}</span>
             </button>
           </div>
         )}

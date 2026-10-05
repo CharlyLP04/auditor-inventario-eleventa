@@ -22,7 +22,7 @@ export function Root() {
   if (loading) return <p role="status" className="message">Abriendo tu sesión…</p>;
   if (mode === 'cloud' && available) return <Suspense fallback={<p role="status" className="message">Cargando equipo…</p>}><CloudApp onUseLocal={() => choose('local')} /></Suspense>;
   if (!username) return <main className="auth-shell"><AccountForm onSubmit={async (name, password, register) => { const user = await localLogin(name, password, register); selectWorkspaceUser(user); transition(() => setUsername(user)); }}>
-    <p className="grid-login-note">Tu cuenta y sus datos se guardan cifrados en este dispositivo, disponibles sin conexión.</p>{error && <p role="alert">{error}</p>}
+    <p className="grid-login-note">Tu sesión está protegida con contraseña. Los datos se guardan en este dispositivo y están disponibles sin conexión.</p>{error && <p role="alert">{error}</p>}
     {available && <button className="secondary" onClick={() => choose('cloud')}>Entrar al equipo en la nube</button>}
   </AccountForm></main>;
   return <><div className="account-toolbar"><span className="account-user-pill"><span className="account-status-dot" aria-hidden="true" /><strong>{username}</strong><small>Sesión local</small></span><div className="account-toolbar-controls"><InterfaceScale key={username} username={username} /><button className="secondary account-logout-btn" onClick={async () => { await localLogout(); location.reload(); }}>Cerrar sesión</button></div></div><App key={username} onUseCloud={available ? () => choose('cloud') : undefined} /></>;

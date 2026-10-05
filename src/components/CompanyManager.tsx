@@ -1,3 +1,4 @@
+import { useViewPreference } from '../hooks/useViewPreference';
 import { useState } from 'react';
 import { transition } from '../services/transition';
 import { Building2, Plus, ArrowUpRight, ArrowRight, Download, Upload, ShieldCheck, Search, CalendarDays, FileCheck2, Fingerprint, ImagePlus, Save, MapPin, Phone, Pencil, Trash2, X } from 'lucide-react';
@@ -9,10 +10,10 @@ const statusLabel = { in_progress: 'En curso', completed: 'Completada', closed: 
 const month = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; };
 export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: () => void }) {
   const [editing, setEditing] = useState<Company | null>(null);
-  const [selected, setSelected] = useState(store.data?.activeCompanyId ?? '');
+  const [selected, setSelected] = useViewPreference<string>('clients:selected', store.data?.activeCompanyId ?? '', (v): v is string => typeof v === 'string');
   const [period, setPeriod] = useState(month);
   const [message, setMessage] = useState('');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useViewPreference<string>('clients:search', '', (v): v is string => typeof v === 'string');
   const addCompany = () => setEditing({ id: createId(), name: '', createdAt: new Date().toISOString() });
   if (!store.data) return <div><p role="status">{store.error ? "No se pudo abrir el directorio local." : "Abriendo directorio local…"}</p>{store.error && <button className="secondary" onClick={store.recover}>Abrir directorio conservando el respaldo anterior</button>}</div>;
   const data = store.data;
@@ -25,11 +26,10 @@ export function CompanyManager({ store, onOpen }: { store: AuditStore; onOpen: (
     <section className="clients-hero">
       <div className="clients-hero-copy">
         <span className="studio-kicker"><span /> AUDITORÍAS GRID.MX · CLIENTES</span>
-        <h2>Grandes relaciones.<br /><em>Cuentas claras.</em></h2>
-        <p>Cada negocio, su historia. Un solo lugar para gestionar tus clientes y dar seguimiento a cada auditoría.</p>
+        <h2>Tus clientes.<br /><em>Todo en orden.</em></h2>
+        <p>Selecciona una empresa para continuar su auditoría o crea un nuevo periodo de inventario.</p>
         <button className="primary studio-create" disabled={store.busy || !isAdmin} title={!isAdmin ? 'Requiere Administrador' : undefined} onClick={addCompany}><Plus size={18} aria-hidden="true" /> Agregar empresa <ArrowUpRight size={18} aria-hidden="true" /></button>
       </div>
-      <div className="clients-orbit" aria-hidden="true"><div className="orbit-ring ring-one" /><div className="orbit-ring ring-two" /><div className="orbit-ring ring-three" /><div className="orbit-core"><Building2 size={44} strokeWidth={1.3} /></div><span className="orbit-tag tag-one"><ShieldCheck size={15} /> Control local</span><span className="orbit-tag tag-two"><FileCheck2 size={15} /> Cada mes cuenta</span><span className="orbit-dot" /></div>
       <div className="clients-metrics">
         <div><Building2 size={18} aria-hidden="true" /><strong>{String(data.companies.length).padStart(2, '0')}</strong><span>Empresas en cartera</span></div>
         <div><CalendarDays size={18} aria-hidden="true" /><strong>{String(ongoing).padStart(2, '0')}</strong><span>Auditorías en curso</span></div>
@@ -134,3 +134,4 @@ function ProfileEditor({ profile, save, disabled }: { profile: AuditorProfile; s
     </div>
   </section>;
 }
+

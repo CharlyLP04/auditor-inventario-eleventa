@@ -1,3 +1,4 @@
+import { useViewPreference, useViewScroll } from '../../hooks/useViewPreference';
 import { transition } from '../../services/transition';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Firestore } from 'firebase/firestore';
@@ -38,7 +39,8 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   onBack: () => void; onPending: (count: number) => void;
 }) {
   const store = useCloudAudit(db, user, auditId);
-  const [tab, setTab] = useState<Tab>('departments');
+  const [tab, setTab] = useViewPreference<Tab>(`cloud:${user.uid}:${auditId}:section`, 'departments', (v): v is Tab => tabs.some(t => t.id === v));
+  useViewScroll(`cloud:${user.uid}:${auditId}:${tab}`);
   const [prefs, savePrefs] = useDevicePreferences(user.uid);
   const [lastScannedInfo, setLastScannedInfo] = useState<{ code: string; description: string; quantity: number; theoretical: number; isNew: boolean } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -109,9 +111,9 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
           onUndo={async () => { const done = await store.undo(); if (done) setLastScannedInfo(null); return done; }}
           onRegisterUnregistered={async input => { const saved = store.register(input); setLastScannedInfo({ code: saved.code, description: saved.description, quantity: saved.physicalStock, theoretical: 0, isNew: true }); return saved; }}
           onRestoreUnregistered={async code => store.restoreUnregistered(code)} />
-        <aside className="desktop-only"><AuditSummary stats={stats} products={products} /></aside>
+        <aside className="desktop-only"><AuditSummary compact stats={stats} products={products} /></aside>
       </div>)}
-    {tab === 'list' && <InventoryTable products={products} readOnly={readOnly} isAdmin={false}
+    {tab === 'list' && <InventoryTable key={auditId} viewKey={`cloud:${user.uid}:${auditId}`} products={products} readOnly={readOnly} isAdmin={false}
       onUpdateQuantity={async (code, quantity) => { const product = products.find(p => p.code === code); if (!product) return false; const outside = await confirmDepartment(product); if (outside === null) return false; try { await store.recordCount(code, quantity, 'set', outside); return true; } catch (e) { store.setError(e instanceof Error ? e.message : 'No se guardó la corrección.'); return false; } }}
       unregisteredActions={{
         onEdit: async (code, patch) => store.editUnregistered(code, patch), onExclude: async (code, reason) => store.excludeUnregistered(code, reason),

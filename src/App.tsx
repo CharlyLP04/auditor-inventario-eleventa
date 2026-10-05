@@ -1,3 +1,5 @@
+import { WorkspaceActions } from './components/WorkspaceActions';
+import { useViewPreference, useViewScroll } from './hooks/useViewPreference';
 import { transition } from './services/transition';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { RotateCcw, ShieldCheck, FileSpreadsheet, Shield, UserRound, KeyRound, Users } from 'lucide-react';
@@ -28,7 +30,7 @@ const tabs = [
   { id: 'scanner', title: 'Contar', icon: StoreIcon },
   { id: 'list', title: 'Auditoría', icon: TicketIcon },
   { id: 'stats', title: 'Balance', icon: CardStockIcon },
-  { id: 'upload', title: 'eleventa', icon: GearSettingsIcon },
+  { id: 'upload', title: 'Importar', icon: GearSettingsIcon },
 ] as const;
 
 type Tab = typeof tabs[number]['id'];
@@ -38,12 +40,13 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
   const { products, productsRef, error, commit, backup, activeAudit, data, busy } = store;
   const company = data?.companies.find(c => c.id === data?.activeCompanyId);
   const readOnly = !activeAudit || activeAudit.status !== 'in_progress';
-  const [activeTab, setActiveTab] = useState<Tab>('companies');
+  const [activeTab, setActiveTab] = useViewPreference<Tab>('local:section', 'companies', (v): v is Tab => tabs.some(t => t.id === v));
   const [lastScannedInfo, setLastScannedInfo] = useState<{ code: string; description: string; quantity: number; theoretical: number; isNew: boolean } | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const isAdmin = store.role === 'admin';
   const [pinMode, setPinMode] = useState<'unlock' | 'change' | null>(null);
   const [notice, setNotice] = useState('');
+  useViewScroll(`local:${activeAudit?.id ?? 'directory'}:${activeTab}`);
   const stats = useMemo(() => calculateStats(products), [products]);
 
   const handleScan = async (barcode: string, quantity = 1, mode: CountMode = 'add') => {
@@ -105,7 +108,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
             if (await store.selectCompany(companyId)) { transition(() => { setLastScannedInfo(null); setNotice(''); setActiveTab(latest ? 'list' : 'companies'); }); }
           }}><option value="" disabled>Selecciona empresa</option>{data?.companies.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
         </label>
-        <div className="header-actions">
+        <div className="header-actions"><WorkspaceActions>
           <button className="secondary role-toggle" disabled={busy || !data} onClick={() => { if (isAdmin) { store.lockAdmin(); setActiveTab(current => current === 'upload' ? 'list' : current); setIsExportOpen(false); } else setPinMode('unlock'); }}>
             {isAdmin ? <Shield size={17} aria-hidden="true" /> : <UserRound size={17} aria-hidden="true" />}{isAdmin ? 'Administrador · Bloquear' : 'Auditor · Acceso admin'}
           </button>
@@ -123,11 +126,11 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
                 aria-label="Reiniciar conteo físico"
                 title="Reiniciar conteos"
               >
-                <RotateCcw size={16} aria-hidden="true" />
+                <RotateCcw size={16} aria-hidden="true" /> Reiniciar conteos
               </button>
             </>
           )}
-        </div>
+        </WorkspaceActions></div>
       </header>
 
       {/* Floating Pill Dock inferior con íconos personalizados de doble estado */}
@@ -147,16 +150,16 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
           );
         })}
         <p className="desktop-only nav-note">
-          Conteo actual:<br />
+          <span className="terminal-label">SESIÓN / INVENTARIO</span><br />
           <strong>{stats.auditedCount} de {stats.totalCatalog}</strong> productos
         </p>
       </nav>
 
       {/* Área principal */}
-      <main key={activeAudit?.id ?? "no-audit"} id="contenido" className="app-main animate-card-pop" tabIndex={-1}>
+      <main key={activeAudit?.id ?? "no-audit"} id="contenido" className="app-main" tabIndex={-1}>
         <div className="page-heading">
           <div>
-            <p className="eyebrow">{activeTab === 'companies' ? 'RELACIONES QUE CRECEN' : 'AUDITORÍA ACTIVA'}</p>
+            <p className="eyebrow">{activeTab === 'companies' ? 'ESPACIO DE TRABAJO' : 'AUDITORÍA ACTIVA'}</p>
             <h2>{tabs.find(t => t.id === activeTab)?.title}</h2>
           </div>
           {activeTab !== 'companies' && <span className="count-badge">
@@ -176,7 +179,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
             Si tu navegador no inició la descarga automática: <a href={store.backupDownload.url} download={store.backupDownload.fileName} className="underline text-[var(--app-accent)] font-bold">Guardar {store.backupDownload.fileName}</a>
           </p>
         )}
-        {busy && <p role="status" className="message">Guardando en este dispositivo…</p>}
+        <div className="save-indicator" role="status" aria-live="polite">{busy ? 'Guardando cambios…' : ''}</div>
         {activeAudit && activeTab !== 'companies' && <AuditContext
           key={activeAudit.id} audit={activeAudit} companyName={company?.name}
           busy={busy} pendingCount={stats.notCountedCount} updateAudit={store.updateAudit}
@@ -191,7 +194,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
                 <BarcodeScanner onScan={handleScan} onRegisterUnregistered={handleRegisterUnregistered} onRestoreUnregistered={store.restoreUnregisteredProduct} lastScannedInfo={lastScannedInfo} products={products} preferences={store.scannerPreferences}
                   onPreferencesChange={store.saveScannerPreferences} saving={busy} canUndo={store.canUndo} onUndo={async () => { const saved = await store.undoCount(); if (saved) setLastScannedInfo(null); return saved; }} />
                 <aside className="desktop-only">
-                  <AuditSummary stats={stats} products={products} />
+                  <AuditSummary compact stats={stats} products={products} />
                   <p className="message mt-4">
                     Escanea cada pieza o selecciona la cantidad por caja. En PC también puedes ingresar códigos con un lector USB o Bluetooth.
                   </p>
@@ -212,7 +215,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
           )}
 
           {activeTab === 'list' && (
-            <InventoryTable products={products} onUpdateQuantity={handleUpdateQuantity} readOnly={busy || readOnly} isAdmin={isAdmin} onUpdateProduct={store.updateProduct}
+            <InventoryTable key={activeAudit?.id ?? 'empty'} viewKey={`local:${activeAudit?.id ?? 'empty'}`} products={products} onUpdateQuantity={handleUpdateQuantity} readOnly={busy || readOnly} isAdmin={isAdmin} onUpdateProduct={store.updateProduct}
               unregisteredActions={{ onEdit: store.editUnregisteredProduct, onExclude: store.excludeUnregisteredProduct, onRestore: store.restoreUnregisteredProduct, onLink: store.linkUnregisteredProduct }} />
           )}
 

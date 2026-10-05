@@ -1,3 +1,4 @@
+import { useViewPreference } from '../hooks/useViewPreference';
 import { transition } from '../services/transition';
 import { useRef, useState } from 'react';
 import { Building2, ChevronDown, NotebookPen, Save, Check, LockKeyhole, CheckCircle2 } from 'lucide-react';
@@ -14,7 +15,7 @@ interface Props {
 }
 
 export function AuditContext({ audit, companyName, busy, pendingCount, updateAudit, onFinish, canManage = true }: Props) {
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useViewPreference<string | null>(`audit:${audit.id}:notes-draft`, null, (v): v is string | null => v === null || typeof v === 'string');
   const [feedback, setFeedback] = useState('');
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -48,7 +49,7 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
         title="Finalizar auditoría y generar dictamen oficial"
       >
         <CheckCircle2 size={15} aria-hidden="true" />
-        <span>Terminar auditoría</span>
+        <span>Exportar dictamen</span>
       </button>
     )}
     <>
@@ -65,7 +66,7 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
           setDraft(null); setFeedback('Notas guardadas.'); closeEditor();
         } else setFeedback('No se guardaron las notas. Tu texto sigue aquí para volver a intentarlo.');
       }}>
-        <div className="audit-notes-heading"><span className="audit-notes-icon"><NotebookPen size={20} aria-hidden="true" /></span><div><h3>Lo que el conteo no cuenta.</h3><p>Hallazgos y observaciones que aparecerán en el dictamen.</p></div></div>
+        <div className="audit-notes-heading"><span className="audit-notes-icon"><NotebookPen size={20} aria-hidden="true" /></span><div><h3>Notas de auditoría</h3><p>Hallazgos y observaciones que aparecerán en el dictamen.</p></div></div>
         <label className="sr-only" htmlFor={`audit-notes-${audit.id}`}>Hallazgos y notas de la auditoría</label>
         <textarea id={`audit-notes-${audit.id}`} name="notes" value={notes} onChange={e => { setDraft(e.target.value); setFeedback(''); }} maxLength={10000} readOnly={readOnly} disabled={busy} placeholder="Ej. Revisar productos sin etiqueta en bodega. Confirmar las diferencias con el encargado…" />
         <div className="audit-notes-footer">

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './workspace.css'
 import { Root } from './Root.tsx'
 
 if ('serviceWorker' in navigator) {
