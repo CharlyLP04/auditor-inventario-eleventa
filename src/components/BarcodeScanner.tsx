@@ -326,16 +326,55 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
   return (
     <div className={`scanner-shell flex flex-col gap-4 w-full max-w-xl mx-auto ${preferences.highVisibility ? 'scanner-large' : ''}`}>
       <div className="scanner-tools">
+        <div className="scanner-toggles" role="group" aria-label="Preferencias de captura">
         <button className="secondary" disabled={saving} aria-pressed={preferences.speechEnabled} onClick={() => {
           if (!('speechSynthesis' in window)) { setErrorMessage('Este navegador no admite voz sintetizada.'); return; }
           void onPreferencesChange?.({ ...preferences, speechEnabled: !preferences.speechEnabled });
         }}><Volume2 size={18} aria-hidden="true" /> Voz</button>
         <button className="secondary" disabled={saving} aria-pressed={preferences.highVisibility} onClick={() => { void onPreferencesChange?.({ ...preferences, highVisibility: !preferences.highVisibility }); }}><Eye size={18} aria-hidden="true" /> Letra grande</button>
+        </div>
         <label>Zona activa<select disabled={saving} value={preferences.activeZoneDepartment ?? ''} onChange={e => { void onPreferencesChange?.({ ...preferences, activeZoneDepartment: e.target.value || undefined }); }}><option value="">Todos</option>{departments.map(d => <option key={d}>{d}</option>)}</select></label>
       </div>
       {quantityRequest && <QuantityKeypadModal code={quantityRequest.code} product={products.find(p => p.code === quantityRequest.code)} initialMode={quantityRequest.correction ? 'set' : 'add'} initialValue={quantityRequest.correction ? String(lastQuantity) : ''} onClose={() => { setQuantityRequest(null); resumeCamera(); }} onSave={async (quantity, mode) => { const saved = await persistCount(quantityRequest.code, quantity, mode, quantityRequest.warnings); if (saved) { cooldown.current.release(quantityRequest.code); cooldown.current.accept(quantityRequest.code); } return saved; }} />}
+      {/* Buscador: código de barras, clave interna o descripción. Un lector USB/Bluetooth también escribe aquí. */}
+      <section className="scanner-search" aria-label="Buscar producto">
+        <form onSubmit={handleSearchSubmit} className="relative flex items-center">
+          <input
+            type="search"
+            disabled={saving} aria-label="Buscar producto por código o descripción"
+            autoComplete="off"
+            name="barcode"
+            spellCheck={false}
+            maxLength={128}
+            placeholder="Código, clave o descripción…"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setSearchNotice(''); }}
+            className="w-full bg-[var(--app-surface)] border border-white/10 focus:border-[var(--app-accent)] text-[var(--app-pearl)] placeholder-[#9a9a9a] text-sm rounded-full py-3.5 pl-5 pr-28 outline-none transition-colors"
+          />
+          <button
+            type="submit"
+            className="absolute right-2 px-4 py-2 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] text-[var(--app-bg)] text-xs font-black uppercase tracking-wider rounded-full flex items-center gap-1.5 cursor-pointer transition-colors shadow-md"
+          >
+            <Search className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
+            Buscar
+          </button>
+        </form>
+        {searchNotice && <p className="search-notice" role="status">{searchNotice}</p>}
+        {results.length > 0 && <ul className="search-results" aria-label="Resultados de búsqueda">
+          {results.map(({ product, excluded }) => (
+            <li key={product.code}><button type="button" disabled={saving} onClick={() => chooseResult(product)}>
+              <span className="search-result-name">{product.description}</span>
+              <span className="search-result-meta"><code>{product.code}</code>{product.sku && <> · Clave {product.sku}</>} · {product.department}{!product.isUnregistered && <> · {money.format(product.price)}</>}</span>
+              <span className={`search-result-state ${excluded ? 'is-excluded' : product.isUnregistered ? 'is-unregistered' : isCounted(product) ? 'is-counted' : ''}`}>
+                {excluded ? 'Excluido' : product.isUnregistered ? 'No encontrado' : isCounted(product) ? `Contado: ${product.physicalStock}` : 'Pendiente'}
+              </span>
+            </button></li>
+          ))}
+        </ul>}
+      </section>
       {/* Visor de Cámara con Retícula y Láser Dinámico */}
       <div className="relative bg-[var(--app-surface)] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl scanner-camera min-h-[260px] flex flex-col items-center justify-center">
+        <span className="scanner-hud-label" aria-hidden="true">{isScanning ? 'LECTOR / ACTIVO' : 'LECTOR / EN ESPERA'}</span>
         {isScanning && <div className="scan-reticle" aria-hidden="true" />}
         {flash > 0 && <div key={flash} className={`scan-flash tone-${feedback?.tone ?? 'found'}`} aria-hidden="true" />}
         <div id="interactive-scanner-view" className="w-full h-full min-h-[240px]" />
@@ -523,42 +562,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
         }}><Undo2 size={18} aria-hidden="true" /> Deshacer último conteo</button>}
       </section>}
 
-      {/* Buscador: código de barras, clave interna o descripción. Un lector USB/Bluetooth también escribe aquí. */}
-      <section className="scanner-search" aria-label="Buscar producto">
-        <form onSubmit={handleSearchSubmit} className="relative flex items-center">
-          <input
-            type="search"
-            disabled={saving} aria-label="Buscar producto por código o descripción"
-            autoComplete="off"
-            name="barcode"
-            spellCheck={false}
-            maxLength={128}
-            placeholder="Código, clave o descripción…"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setSearchNotice(''); }}
-            className="w-full bg-[var(--app-surface)] border border-white/10 focus:border-[var(--app-accent)] text-[var(--app-pearl)] placeholder-[#9a9a9a] text-sm rounded-full py-3.5 pl-5 pr-28 outline-none transition-colors"
-          />
-          <button
-            type="submit"
-            className="absolute right-2 px-4 py-2 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] text-[var(--app-bg)] text-xs font-black uppercase tracking-wider rounded-full flex items-center gap-1.5 cursor-pointer transition-colors shadow-md"
-          >
-            <Search className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
-            Buscar
-          </button>
-        </form>
-        {searchNotice && <p className="search-notice" role="status">{searchNotice}</p>}
-        {results.length > 0 && <ul className="search-results" aria-label="Resultados de búsqueda">
-          {results.map(({ product, excluded }) => (
-            <li key={product.code}><button type="button" disabled={saving} onClick={() => chooseResult(product)}>
-              <span className="search-result-name">{product.description}</span>
-              <span className="search-result-meta"><code>{product.code}</code>{product.sku && <> · Clave {product.sku}</>} · {product.department}{!product.isUnregistered && <> · {money.format(product.price)}</>}</span>
-              <span className={`search-result-state ${excluded ? 'is-excluded' : product.isUnregistered ? 'is-unregistered' : isCounted(product) ? 'is-counted' : ''}`}>
-                {excluded ? 'Excluido' : product.isUnregistered ? 'No encontrado' : isCounted(product) ? `Contado: ${product.physicalStock}` : 'Pendiente'}
-              </span>
-            </button></li>
-          ))}
-        </ul>}
-      </section>
+
     </div>
   );
 };

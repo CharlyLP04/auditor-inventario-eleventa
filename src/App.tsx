@@ -1,7 +1,7 @@
 import { WorkspaceActions } from './components/WorkspaceActions';
 import { useViewPreference, useViewScroll } from './hooks/useViewPreference';
 import { transition } from './services/transition';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { RotateCcw, ShieldCheck, FileSpreadsheet, Shield, UserRound, KeyRound, Users } from 'lucide-react';
 import type { Product, CountMode, ImportReport } from './types';
 import { InventoryTable } from './components/InventoryTable';
@@ -35,7 +35,7 @@ const tabs = [
 
 type Tab = typeof tabs[number]['id'];
 
-export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
+export function App({ onUseCloud, sessionControls }: { onUseCloud?: () => void; sessionControls?: ReactNode } = {}) {
   const store = useAuditStore();
   const { products, productsRef, error, commit, backup, activeAudit, data, busy } = store;
   const company = data?.companies.find(c => c.id === data?.activeCompanyId);
@@ -93,6 +93,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
       {/* Header con el nuevo BrandLogo vectorial y estética Obsidian */}
       {pinMode && <PinAuthModal mode={pinMode} onClose={() => setPinMode(null)} unlock={store.unlockAdmin} changePin={store.changePin} />}
       <header className="app-header">
+        {sessionControls && <div className="command-session">{sessionControls}</div>}
         <div className="brand">
           <BrandLogo size={44} />
           <div>
@@ -108,7 +109,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
             if (await store.selectCompany(companyId)) { transition(() => { setLastScannedInfo(null); setNotice(''); setActiveTab(latest ? 'list' : 'companies'); }); }
           }}><option value="" disabled>Selecciona empresa</option>{data?.companies.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select>
         </label>
-        <div className="header-actions"><WorkspaceActions>
+        <div className="header-actions"><span className="command-role"><ShieldCheck size={14} aria-hidden="true" />{isAdmin ? 'Administrador' : 'Auditor'}</span><WorkspaceActions>
           <button className="secondary role-toggle" disabled={busy || !data} onClick={() => { if (isAdmin) { store.lockAdmin(); setActiveTab(current => current === 'upload' ? 'list' : current); setIsExportOpen(false); } else setPinMode('unlock'); }}>
             {isAdmin ? <Shield size={17} aria-hidden="true" /> : <UserRound size={17} aria-hidden="true" />}{isAdmin ? 'Administrador · Bloquear' : 'Auditor · Acceso admin'}
           </button>
@@ -135,7 +136,7 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
 
       {/* Floating Pill Dock inferior con íconos personalizados de doble estado */}
       <nav data-role={store.role} className="app-nav" aria-label="Navegación principal">
-        {tabs.filter(t => isAdmin || t.id !== 'upload').map(({ id, title, icon: IconComponent }) => {
+        {tabs.filter(t => isAdmin || t.id !== 'upload').map(({ id, title, icon: IconComponent }, index) => {
           const isActive = activeTab === id;
           return (
             <button
@@ -145,21 +146,23 @@ export function App({ onUseCloud }: { onUseCloud?: () => void } = {}) {
               className="relative group cursor-pointer"
             >
               <IconComponent size={22} solid={isActive} aria-hidden="true" />
-              <span>{title}</span>
+              <span>{title}</span><span className="nav-module" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
             </button>
           );
         })}
-        <p className="desktop-only nav-note">
+        <div className="desktop-only nav-note">
           <span className="terminal-label">SESIÓN / INVENTARIO</span><br />
           <strong>{stats.auditedCount} de {stats.totalCatalog}</strong> productos
-        </p>
+          <progress className="nav-progress" aria-label="Avance del conteo" value={stats.auditedCount} max={Math.max(1, stats.totalCatalog)} />
+          <span className="nav-remaining">{stats.notCountedCount} pendientes</span>
+        </div>
       </nav>
 
       {/* Área principal */}
       <main key={activeAudit?.id ?? "no-audit"} id="contenido" className="app-main" tabIndex={-1}>
         <div className="page-heading">
           <div>
-            <p className="eyebrow">{activeTab === 'companies' ? 'ESPACIO DE TRABAJO' : 'AUDITORÍA ACTIVA'}</p>
+            <p className="eyebrow">{activeTab === 'companies' ? 'grid.directory' : readOnly ? 'grid.audit --review' : 'grid.audit --live'}</p>
             <h2>{tabs.find(t => t.id === activeTab)?.title}</h2>
           </div>
           {activeTab !== 'companies' && <span className="count-badge">

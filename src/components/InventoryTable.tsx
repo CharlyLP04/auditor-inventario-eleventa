@@ -26,6 +26,10 @@ const filters: { id: ProductFilter; title: string }[] = [
   { id: 'excluded', title: '⊘ Excluidos' },
 ];
 
+const matchesFilter = (p: Product, id: ProductFilter) => id === 'excluded'
+  ? isExcluded(p)
+  : !isExcluded(p) && (id === 'all' || (id === 'unregistered' ? Boolean(p.isUnregistered) : productStatus(p) === id));
+
 const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
 export function InventoryTable({
@@ -67,14 +71,23 @@ export function InventoryTable({
 
   const departments = useMemo(() => [...new Set(products.map(p => p.department))].sort(), [products]);
 
-  const filtered = useMemo(() => {
-    // La búsqueda ignora acentos, mayúsculas y el orden de las palabras; los excluidos solo aparecen en su filtro.
+  // Los contadores respetan la misma búsqueda y departamento que la lista.
+  const scopedProducts = useMemo(() => {
     const base = deferredSearch.trim() ? searchProducts(products, deferredSearch, { limit: Infinity }).map(r => r.product) : products;
-    return base.filter(p =>
-      (!department || p.department === department) &&
-      (filter === 'excluded' ? isExcluded(p) : !isExcluded(p) && (filter === 'all' || (filter === 'unregistered' ? p.isUnregistered : productStatus(p) === filter)))
-    );
-  }, [products, deferredSearch, department, filter]);
+    return base.filter(p => !department || p.department === department);
+  }, [products, deferredSearch, department]);
+  const filterCounts = useMemo(() => {
+    const counts: Record<ProductFilter, number> = { all: 0, missing: 0, surplus: 0, match: 0, not_counted: 0, unregistered: 0, excluded: 0 };
+    for (const product of scopedProducts) {
+      if (isExcluded(product)) { counts.excluded++; continue; }
+      counts.all++;
+      const status = productStatus(product);
+      if (product.isUnregistered) counts.unregistered++;
+      if (status !== 'unregistered') counts[status]++;
+    }
+    return counts;
+  }, [scopedProducts]);
+  const filtered = useMemo(() => scopedProducts.filter(p => matchesFilter(p, filter)), [scopedProducts, filter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / 50));
   const currentPage = Math.min(page, totalPages - 1);
@@ -137,7 +150,7 @@ export function InventoryTable({
             onClick={() => changeFilter(f.id)}
             className={`filter-${f.id}`}
           >
-            {f.title}
+            {f.title}<span className="filter-count">{filterCounts[f.id].toLocaleString('es-MX')}</span>
           </button>
         ))}
       </div>
@@ -167,7 +180,7 @@ export function InventoryTable({
           return (
             <article
               key={p.code}
-              className={`inventory-row status-${state}${savingCode === p.code ? ' is-saving' : ''}`}
+              className={`inventory-row status-${state}${savingCode === p.code ? ' is-saving' : ''}${savedCode === p.code ? ' is-updated' : ''}`}
               aria-label={p.description}
             >
               <div className="product-info">

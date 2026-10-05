@@ -25,5 +25,8 @@ export function Root() {
     <p className="grid-login-note">Tu sesión está protegida con contraseña. Los datos se guardan en este dispositivo y están disponibles sin conexión.</p>{error && <p role="alert">{error}</p>}
     {available && <button className="secondary" onClick={() => choose('cloud')}>Entrar al equipo en la nube</button>}
   </AccountForm></main>;
-  return <><div className="account-toolbar"><span className="account-user-pill"><span className="account-status-dot" aria-hidden="true" /><strong>{username}</strong><small>Sesión local</small></span><div className="account-toolbar-controls"><InterfaceScale key={username} username={username} /><button className="secondary account-logout-btn" onClick={async () => { await localLogout(); location.reload(); }}>Cerrar sesión</button></div></div><App key={username} onUseCloud={available ? () => choose('cloud') : undefined} /></>;
+  return <App key={username} onUseCloud={available ? () => choose('cloud') : undefined} sessionControls={<>
+    <span className="account-user-pill"><span className="account-status-dot" aria-hidden="true" /><strong>{username}</strong><small>Sesión local</small></span>
+    <div className="account-toolbar-controls"><InterfaceScale key={username} username={username} /><button className="secondary account-logout-btn" onClick={async () => { await localLogout(); location.reload(); }}>Cerrar sesión</button></div>
+  </>} />;
 }

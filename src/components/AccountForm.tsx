@@ -5,6 +5,7 @@ export function AccountForm({ onSubmit, children }: { onSubmit: (name: string, p
   const [register, setRegister] = useState(false), [name, setName] = useState(''), [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   return <section className="workspace-card cloud-login grid-login">
+    <div className="terminal-window-bar"><span aria-hidden="true">&gt;_</span><span>grid.auth</span><span>Acceso al espacio de trabajo</span></div>
     <div className="grid-login-header">
       <div className="grid-login-brand">
         <BrandLogo size={52} />
