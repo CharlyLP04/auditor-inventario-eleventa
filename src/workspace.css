@@ -405,7 +405,7 @@
   .scanner-camera::after { content: ''; position: absolute; inset: .65rem; z-index: 11; pointer-events: none; background: linear-gradient(var(--app-accent), var(--app-accent)) left top / 16px 2px no-repeat, linear-gradient(var(--app-accent), var(--app-accent)) left top / 2px 16px no-repeat, linear-gradient(var(--app-accent), var(--app-accent)) right bottom / 16px 2px no-repeat, linear-gradient(var(--app-accent), var(--app-accent)) right bottom / 2px 16px no-repeat; }
   .scanner-hud-label { position: absolute; top: .75rem; right: .9rem; z-index: 12; pointer-events: none; padding: .2rem .4rem; background: #06090dcc; font: .625rem var(--font-mono); color: #b4ccbc; }
   .scanner-camera > .absolute button { border-radius: 5px; box-shadow: none; }
-  .scanner-camera > .absolute > .rounded-full { border-radius: 5px; box-shadow: none; width: 3rem; height: 3rem; }
+  .scanner-camera .scanner-camera-placeholder { border-radius: 5px; box-shadow: none; width: 3rem; height: 3rem; }
   .scanner-modes { border-radius: 5px; gap: .4rem; background: var(--app-bg); }
   .scanner-modes button { border-radius: 4px; font-family: var(--font-mono); box-shadow: none; transform: none; }
   .scanner-modes button[aria-pressed='true'] { border-color: var(--app-accent); box-shadow: inset 0 -2px var(--app-accent); }
@@ -568,3 +568,60 @@
   .verification-overview { flex-direction: column; align-items: stretch; }
   .inventory-donut { flex-basis: auto; align-self: center; }
 }
+
+@media screen {
+  .scanner-camera .scanner-start-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .6rem;
+    width: auto;
+    max-width: 100%;
+    min-height: 48px;
+    height: auto;
+    flex-shrink: 0;
+    padding: .75rem 1.1rem;
+    line-height: 1.35;
+  }
+  .scanner-start-button > span { min-width: 0; white-space: normal; text-align: center; }
+  .scanner-start-button > svg { flex: 0 0 20px; }
+}
+
+/* Marca integrada: el propio trazo es el emblema, sin una placa alrededor. */
+@media screen {
+  .grid-logo,
+  .session-brand .grid-logo {
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--app-pearl);
+    overflow: visible;
+  }
+  .grid-logo svg { display: block; overflow: visible; }
+}
+/* Solo propiedades visuales: ninguna animación cambia el espacio del control. */
+@media screen and (prefers-reduced-motion: no-preference) {
+  button:not(:disabled) {
+    transition: scale 120ms ease-out, background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out, box-shadow 160ms ease-out !important;
+    transform-origin: center;
+  }
+  button:not(:disabled):active { scale: .97; }
+  button:not(:disabled):focus-visible { animation: grid-button-focus 180ms ease-out; }
+  .grid-mark-frame { animation: grid-mark-draw 520ms ease-out both; }
+  .grid-mark-base { animation: grid-mark-draw 420ms 90ms ease-out both; }
+  .grid-mark-prompt { animation: grid-prompt-ready 240ms 200ms ease-out both; }
+  .grid-mark-cursor { animation: grid-cursor-ready 450ms 300ms ease-out 2; }
+  .grid-logo:hover .grid-mark-cursor { animation: grid-cursor-hover 550ms ease-out 2; }
+  @media (hover: hover) and (pointer: fine) {
+    button:not(:disabled):hover:not(:active) { scale: 1.015; }
+  }
+}
+@keyframes grid-button-focus { from { scale: .985; } to { scale: 1; } }
+@keyframes grid-mark-draw { from { stroke-dasharray: 100; stroke-dashoffset: 100; } to { stroke-dasharray: 100; stroke-dashoffset: 0; } }
+@keyframes grid-prompt-ready { from { opacity: .25; translate: -2px 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes grid-cursor-ready { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes grid-cursor-hover { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }

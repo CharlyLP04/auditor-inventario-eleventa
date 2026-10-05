@@ -382,7 +382,7 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
         {/* Overlay cuando el escáner no está activo */}
         {!isScanning && (
           <div className="absolute inset-0 bg-[var(--app-bg)]/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center gap-5 z-10">
-            <div className="w-16 h-16 rounded-full bg-[var(--app-muted)]/20 text-[var(--app-muted)] flex items-center justify-center shadow-lg border border-[var(--app-muted)]/30">
+            <div className="scanner-camera-placeholder w-16 h-16 rounded-full bg-[var(--app-muted)]/20 text-[var(--app-muted)] flex items-center justify-center shadow-lg border border-[var(--app-muted)]/30">
               <CameraIcon size={32} solid />
             </div>
             <div>
@@ -394,9 +394,9 @@ export const BarcodeScanner = ({ onScan, onRegisterUnregistered, onRestoreUnregi
             <button
               disabled={busy}
               onClick={() => startScanning()}
-              className="px-8 py-4 bg-[var(--app-accent)] hover:bg-[var(--app-accent-hover)] active:scale-95 text-[var(--app-bg)] font-black rounded-full shadow-xl shadow-[var(--app-accent)]/25 flex items-center gap-2.5 transition-all cursor-pointer text-sm uppercase tracking-wider"
+              className="primary scanner-start-button"
             >
-              <CameraIcon size={20} solid />
+              <CameraIcon size={20} solid aria-hidden="true" />
               <span>{busy ? 'Abriendo cámara…' : 'Activar Cámara'}</span>
             </button>
           </div>
