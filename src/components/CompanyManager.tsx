@@ -98,33 +98,41 @@ function ProfileEditor({ profile, save, disabled }: { profile: AuditorProfile; s
   const [letterhead, setLetterhead] = useState(profile.letterhead);
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedProfile, setSavedProfile] = useState(profile);
+  const dirty = name.trim() !== savedProfile.serviceName || auditor.trim() !== savedProfile.auditorName || letterhead.trim() !== savedProfile.letterhead || logo !== savedProfile.logo;
   return <section className="identity-studio">
-    <div className="clients-section-heading"><div><span className="studio-kicker">MEMBRETE OFICIAL</span><h3>Que tu trabajo lleve tu sello.</h3><p>Personaliza el membrete de tus dictámenes y reportes.</p></div><span className="identity-badge"><Fingerprint size={18} aria-hidden="true" /> Marca propia</span></div>
-    <div className="identity-layout">
+    <div className="clients-section-heading"><div><span className="studio-kicker">MEMBRETE OFICIAL</span><h3>Identidad del dictamen</h3><p>Tu logo, datos de contacto y firma en cada reporte.</p></div><span className="identity-badge"><Fingerprint size={18} aria-hidden="true" /> Marca propia</span></div>
+    <div className="identity-layout identity-compact">
       <form className="identity-form" onSubmit={async e => {
         e.preventDefault();
-        if (await save({ serviceName: name.trim(), auditorName: auditor.trim(), letterhead: letterhead.trim(), logo })) setError('Membrete guardado.');
-      }}><fieldset disabled={disabled || reading} className="workspace-fields workspace-form">
+        if (saving || !dirty) return;
+        setSaving(true); setError('');
+        const next = { serviceName: name.trim(), auditorName: auditor.trim(), letterhead: letterhead.trim(), logo };
+        try { if (await save(next)) { setSavedProfile(next); setError('Membrete guardado.'); } else setError('No se pudo guardar. Intenta de nuevo.'); }
+        catch { setError('No se pudo guardar. Intenta de nuevo.'); }
+        finally { setSaving(false); }
+      }}><fieldset disabled={disabled || reading || saving} className="workspace-fields workspace-form">
         <label>Nombre del servicio<input name="serviceName" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="El nombre de tu marca" /></label>
         <label>Nombre del auditor<input name="auditorName" maxLength={200} value={auditor} onChange={e => setAuditor(e.target.value)} placeholder="¿Quién firma el dictamen?" /></label>
         <label>Dirección y contacto<textarea name="letterhead" maxLength={1000} value={letterhead} onChange={e => setLetterhead(e.target.value)} placeholder="Teléfono, correo y dirección de tu servicio" /></label>
-        <label className="identity-upload"><span className="upload-mark">{logo ? <img src={logo} alt="Logotipo seleccionado" /> : <ImagePlus size={23} aria-hidden="true" />}</span><span><strong>{reading ? 'Preparando imagen…' : logo ? 'Cambiar logotipo' : 'Dale rostro a tu marca'}</strong><small>PNG, JPEG o WebP · Hasta 1 MB</small></span><Upload size={18} aria-hidden="true" /><input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Seleccionar logotipo" onChange={e => {
+        <label className="identity-upload"><span className="upload-mark">{logo ? <img src={logo} alt="Logotipo seleccionado" /> : <ImagePlus size={23} aria-hidden="true" />}</span><span><strong>{reading ? 'Preparando imagen…' : logo ? 'Cambiar logotipo' : 'Subir logotipo'}</strong><small>PNG, JPEG o WebP · Hasta 1 MB</small></span><Upload size={18} aria-hidden="true" /><input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Seleccionar logotipo" onChange={e => {
           const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
           if (file.size > 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError('Usa una imagen PNG, JPEG o WebP de hasta 1 MB.'); return; }
           setReading(true);
           const reader = new FileReader(); reader.onload = () => { setLogo(String(reader.result)); setError(''); setReading(false); }; reader.onerror = () => { setError('No se pudo leer el logotipo.'); setReading(false); }; reader.readAsDataURL(file);
         }} /></label>
         {logo && <button type="button" className="identity-remove" onClick={() => setLogo(undefined)}>Quitar logotipo</button>}
-        <button className="primary identity-save"><Save size={17} aria-hidden="true" /> Guardar identidad <ArrowRight size={17} aria-hidden="true" /></button>
+        <button disabled={!dirty} className="primary identity-save"><Save size={17} aria-hidden="true" /> {saving ? 'Guardando…' : 'Guardar identidad'} <ArrowRight size={17} aria-hidden="true" /></button>
         {error && <p role="status" className="identity-feedback">{error}</p>}
       </fieldset></form>
       <aside className="identity-preview" aria-label="Vista previa del membrete">
-        <div className="preview-caption"><span className="preview-live-dot" /> VISTA PREVIA <span>Tu próximo dictamen</span></div>
+        <div className="preview-caption"><span className="preview-live-dot" /> VISTA PREVIA <span>{dirty ? 'Cambios sin guardar' : 'Guardado'}</span></div>
         <div className="identity-paper">
           <div className="paper-letterhead"><div>{logo ? <img src={logo} alt="Logotipo en el membrete" /> : <span className="paper-brand-placeholder"><Fingerprint size={28} /></span>}<strong>{name.trim() || 'Tu servicio de auditoría'}</strong></div><span>AUDITORÍA<br />DE INVENTARIOS</span></div>
           <p className="paper-contact">{letterhead.trim() || 'Tu dirección y datos de contacto'}</p>
           <div className="paper-rule" /><span className="paper-eyebrow">CONTROL · PRECISIÓN · CONFIANZA</span>
-          <h4>Dictamen<br />de inventario.</h4><p className="paper-description">Una visión clara del negocio.<br />Un respaldo para cada decisión.</p>
+          <h4>Dictamen<br />de inventario.</h4><p className="paper-description">Resumen de resultados y diferencias.</p>
           <div className="paper-skeleton" aria-hidden="true"><span /><span /><span /></div>
           <div className="paper-signature"><span /> <strong>{auditor.trim() || 'Nombre del auditor'}</strong><small>Responsable de auditoría</small></div>
           <div className="paper-footer"><span>DOCUMENTO DE EJEMPLO</span><span>01 / 01</span></div>

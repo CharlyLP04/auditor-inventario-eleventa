@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import App from './App';
+import { BrandLogo } from './components/BrandLogo';
 import { cloudConfig, readMode, saveMode } from './services/cloud/config';
 import { localLogin, localLogout, rememberedUser, SESSION_KEY } from './services/localAuth';
 import { selectWorkspaceUser } from './services/storageIndexedDB';
@@ -26,7 +27,7 @@ export function Root() {
     {available && <button className="secondary" onClick={() => choose('cloud')}>Entrar al equipo en la nube</button>}
   </AccountForm></main>;
   return <App key={username} onUseCloud={available ? () => choose('cloud') : undefined} sessionControls={<>
-    <span className="account-user-pill"><span className="account-status-dot" aria-hidden="true" /><strong>{username}</strong><small>Sesión local</small></span>
+    <span className="session-brand" role="img" aria-label="Auditorías Grid.mx" title={`Sesión local: ${username}`}><BrandLogo size={40} /></span>
     <div className="account-toolbar-controls"><InterfaceScale key={username} username={username} /><button className="secondary account-logout-btn" onClick={async () => { await localLogout(); location.reload(); }}>Cerrar sesión</button></div>
   </>} />;
 }

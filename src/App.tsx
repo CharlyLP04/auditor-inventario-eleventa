@@ -10,7 +10,6 @@ import { AuditSummary } from './components/AuditSummary';
 import { CompanyManager } from './components/CompanyManager';
 import { MonthlyComparison } from './components/MonthlyComparison';
 import { InstallApp } from './components/InstallApp';
-import { BrandLogo } from './components/BrandLogo';
 import { StoreIcon, TicketIcon, CardStockIcon, GearSettingsIcon } from './components/CustomIcons';
 import { calculateStats } from './services/auditState';
 import { PinAuthModal } from './components/PinAuthModal';
@@ -94,14 +93,6 @@ export function App({ onUseCloud, sessionControls }: { onUseCloud?: () => void; 
       {pinMode && <PinAuthModal mode={pinMode} onClose={() => setPinMode(null)} unlock={store.unlockAdmin} changePin={store.changePin} />}
       <header className="app-header">
         {sessionControls && <div className="command-session">{sessionControls}</div>}
-        <div className="brand">
-          <BrandLogo size={44} />
-          <div>
-            <h1>Auditorías Grid<span className="grid-accent">.mx</span></h1>
-            <p><ShieldCheck size={13} aria-hidden="true" /> Pensamos en código. Creamos soluciones</p>
-          </div>
-        </div>
-
         <label className="company-selector">Empresa activa
           <select disabled={busy || !data} value={company?.id ?? ''} onChange={async e => {
             const companyId = e.target.value;
