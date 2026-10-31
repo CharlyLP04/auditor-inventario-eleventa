@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeSync, SYNC_SOURCES, sharedAuditId, auditLink } from '../src/services/cloud/teamState.ts';
+import { auditDataLoaded, summarizeSync, SYNC_SOURCES, sharedAuditId, auditLink } from '../src/services/cloud/teamState.ts';
 const confirmed = () => Object.fromEntries(SYNC_SOURCES.map(key => [key, { fromCache: false, hasPendingWrites: false }]));
 test('equipo: no declara sincronización antes de recibir todos los datos del servidor', () => {
   assert.equal(summarizeSync({}).confirmed, false);
@@ -30,4 +30,11 @@ test('equipo: el enlace conserva el origen y abre la auditoría indicada', () =>
 });
 test('equipo: rechaza enlaces sin auditoría o con rutas de documentos inválidas', () => {
   for (const value of ['', '?audit=', '?audit=..', '?audit=foo%2Fbar', '?audit=' + 'a'.repeat(301)]) assert.equal(sharedAuditId(value), null);
+});
+
+test('no muestra ceros mientras faltan contadores o colecciones', () => {
+  assert.equal(auditDataLoaded({}, 2, 2, 16), false);
+  assert.equal(auditDataLoaded(confirmed(), 2, 1, 16), false);
+  assert.equal(auditDataLoaded(confirmed(), 2, 2, 15), false);
+  assert.equal(auditDataLoaded(confirmed(), 2, 2, 16), true);
 });

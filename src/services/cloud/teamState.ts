@@ -1,3 +1,4 @@
+import { BUCKETS } from './model';
 export const SYNC_SOURCES = ['audit', 'catalog', 'counts', 'departments', 'unregistered'] as const;
 export type SyncSource = typeof SYNC_SOURCES[number];
 export interface SyncMetadata { fromCache: boolean; hasPendingWrites: boolean; }
@@ -17,4 +18,8 @@ export function auditLink(href: string, auditId: string): string {
   url.hash = '';
   url.searchParams.set('audit', auditId);
   return url.href;
+}
+
+export function auditDataLoaded(sources: Partial<Record<SyncSource, SyncMetadata>>, chunks: number, loadedChunks: number, bucketCount: number) {
+  return SYNC_SOURCES.every(key => Boolean(sources[key])) && loadedChunks >= chunks && bucketCount === BUCKETS;
 }

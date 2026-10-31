@@ -57,6 +57,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   const readOnly = audit?.status !== 'in_progress';
   const mine = store.departments.filter(d => d.assignee === user.uid);
 
+  if (store.loading && audit) return <div><p role="status" className="message">Cargando catálogo y conteos completos…</p>{store.error && <p role="alert">{store.error}</p>}<button className="secondary" onClick={onBack}>Volver a auditorías</button></div>;
   if (!audit) return <div><p role="status" className="message">{store.error || (store.loading ? 'Abriendo auditoría…' : 'Esta auditoría no existe. Vuelve a la lista o pide un enlace actualizado.')}</p><button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Volver</button></div>;
   const record: AuditRecord = { id: audit.id, companyId: audit.companyId, title: audit.title, period: audit.period, status: audit.status, createdAt: audit.createdAt ?? '', completedAt: audit.completedAt ?? undefined, products, stats, notes: audit.notes };
   const companyRecord: Company | undefined = company ? { id: company.id, name: company.name, contactName: company.contactName, phone: company.phone, address: company.address, notes: company.notes, createdAt: '' } : undefined;
@@ -96,8 +97,8 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
       <SyncBadge online={online} pending={store.pending} synced={store.synced} error={Boolean(store.error)} />
     </div>
     {shareUrl && <section className="message" aria-label="Compartir auditoría"><p>Abre este enlace en los otros teléfonos o computadoras. Cada persona debe entrar con su cuenta y tener acceso al equipo.</p><label>Enlace de la auditoría<input readOnly value={shareUrl} onFocus={event => event.target.select()} /></label><button className="secondary" onClick={() => setShareUrl('')}>Cerrar enlace</button></section>}
-    <AuditContext key={audit.id} audit={record} companyName={company?.name} busy={false} pendingCount={stats.notCountedCount} canManage={isAdmin}
-      updateAudit={async (_id, patch) => patch.status !== audit.status ? store.setAuditStatus(patch.status) : store.saveNotes(patch.notes ?? '')}
+    <AuditContext key={audit.id} audit={record} companyName={company?.name} busy={!online || !store.synced} pendingCount={stats.notCountedCount} canManage={isAdmin}
+      updateAudit={async (_id, patch, expectedNotes) => patch.status !== audit.status ? store.setAuditStatus(patch.status) : store.saveNotes(patch.notes ?? '', expectedNotes ?? '')}
       onFinish={isAdmin ? () => setExporting(true) : undefined} />
     <p className="cloud-mine" role="status">{mine.length ? <>Tus departamentos: <strong>{mine.map(d => d.name).join(', ')}</strong></> : 'Aún no tomas ningún departamento. Elige uno en Departamentos para evitar contar lo mismo que otra persona.'}</p>
     {store.error && <p role="alert" className="message warning">{store.error} <button className="secondary" onClick={() => store.setError('')}>Entendido</button></p>}

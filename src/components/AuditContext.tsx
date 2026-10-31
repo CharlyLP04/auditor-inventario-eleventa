@@ -9,13 +9,17 @@ interface Props {
   companyName?: string;
   busy: boolean;
   pendingCount: number;
-  updateAudit: (id: string, patch: Pick<AuditRecord, 'status' | 'notes'>) => Promise<boolean>;
+  updateAudit: (id: string, patch: Pick<AuditRecord, 'status' | 'notes'>, expectedNotes?: string) => Promise<boolean>;
   onFinish?: () => void;
   canManage?: boolean;
 }
 
 export function AuditContext({ audit, companyName, busy, pendingCount, updateAudit, onFinish, canManage = true }: Props) {
   const [draft, setDraft] = useViewPreference<string | null>(`audit:${audit.id}:notes-draft`, null, (v): v is string | null => v === null || typeof v === 'string');
+  const [baseNotes, setBaseNotes] = useViewPreference<string | null>(`audit:${audit.id}:notes-base`, null, (v): v is string | null => v === null || typeof v === 'string');
+  const saving = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  busy = busy || submitting;
   const [feedback, setFeedback] = useState('');
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -46,6 +50,7 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
         type="button"
         className="audit-finish-trigger"
         onClick={onFinish}
+        disabled={busy || dirty}
         title="Finalizar auditoría y generar dictamen oficial"
       >
         <CheckCircle2 size={15} aria-hidden="true" />
@@ -60,18 +65,22 @@ export function AuditContext({ audit, companyName, busy, pendingCount, updateAud
       </button>
       <form id={`notes-panel-${audit.id}`} hidden={!open} className="audit-notes-editor" onSubmit={async e => {
         e.preventDefault();
-        if (busy || readOnly) return;
+        if (busy || readOnly || saving.current) return;
+        saving.current = true; setSubmitting(true);
+        try {
         setFeedback('');
-        if (await updateAudit(audit.id, { status: audit.status, notes })) {
-          setDraft(null); setFeedback('Notas guardadas.'); closeEditor();
+        if (await updateAudit(audit.id, { status: audit.status, notes }, baseNotes ?? audit.notes ?? '')) {
+          setDraft(null); setBaseNotes(null); setFeedback('Notas guardadas.'); closeEditor();
         } else setFeedback('No se guardaron las notas. Tu texto sigue aquí para volver a intentarlo.');
+        } catch { setFeedback('No se guardaron las notas. Conservamos tu borrador.'); }
+        finally { saving.current = false; setSubmitting(false); }
       }}>
         <div className="audit-notes-heading"><span className="audit-notes-icon"><NotebookPen size={20} aria-hidden="true" /></span><div><h3>Notas de auditoría</h3><p>Hallazgos y observaciones que aparecerán en el dictamen.</p></div></div>
         <label className="sr-only" htmlFor={`audit-notes-${audit.id}`}>Hallazgos y notas de la auditoría</label>
-        <textarea id={`audit-notes-${audit.id}`} name="notes" value={notes} onChange={e => { setDraft(e.target.value); setFeedback(''); }} maxLength={10000} readOnly={readOnly} disabled={busy} placeholder="Ej. Revisar productos sin etiqueta en bodega. Confirmar las diferencias con el encargado…" />
+        <textarea id={`audit-notes-${audit.id}`} name="notes" value={notes} onChange={e => { if (baseNotes === null) setBaseNotes(audit.notes ?? ''); setDraft(e.target.value); setFeedback(''); }} maxLength={10000} readOnly={readOnly} disabled={busy} placeholder="Ej. Revisar productos sin etiqueta en bodega. Confirmar las diferencias con el encargado…" />
         <div className="audit-notes-footer">
           <span>{readOnly ? <><LockKeyhole size={13} aria-hidden="true" /> Solo lectura</> : dirty ? 'Cambios sin guardar' : 'Observaciones de esta auditoría'}<small>{notes.length.toLocaleString('es-MX')} / 10,000</small></span>
-          <div><button type="button" className="notes-cancel" disabled={busy} onClick={() => { setDraft(null); setFeedback(''); closeEditor(); }}>{dirty ? 'Descartar' : 'Cerrar'}</button>
+          <div><button type="button" className="notes-cancel" disabled={busy} onClick={() => { setDraft(null); setBaseNotes(null); setFeedback(''); closeEditor(); }}>{dirty ? 'Descartar' : 'Cerrar'}</button>
           {!readOnly && <button type="submit" className="primary notes-save" disabled={busy || !dirty}><Save size={15} aria-hidden="true" />{busy ? 'Guardando…' : 'Guardar notas'}</button>}</div>
         </div>
       </form>

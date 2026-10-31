@@ -5,13 +5,13 @@ import type { Product, CountMode } from '../types';
 import {
   auditRefs, toAudit, toBucket, toDepartment, toUnregistered, catalogFrom, contributorsFrom, recordCapture, undoCapture, registerUnregistered,
   editUnregistered, setUnregisteredExcluded, linkUnregistered, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment,
-  setAuditStatus, saveAuditNotes, readCaptures,
+  setAuditStatus, saveAuditNotes, verifyAuditIntegrity,
 } from '../services/cloud/repository';
 import type { CloudUser, CloudAudit, CloudDepartment, CloudCompany, DepartmentStatus, AuditStatus } from '../services/cloud/repository';
-import { assembleProducts, verifyIntegrity } from '../services/cloud/model';
+import { assembleProducts } from '../services/cloud/model';
 import type { BucketData, UnregisteredDoc } from '../services/cloud/model';
 import { authMessage } from './useCloudSession';
-import { summarizeSync } from '../services/cloud/teamState';
+import { auditDataLoaded, summarizeSync } from '../services/cloud/teamState';
 import type { SyncSource, SyncMetadata } from '../services/cloud/teamState';
 
 export interface CloudMember { uid: string; name: string; email?: string; role: 'admin' | 'auditor'; active: boolean; }
@@ -53,6 +53,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   const [departments, setDepartments] = useState<CloudDepartment[]>([]);
   const [unregistered, setUnregistered] = useState<UnregisteredDoc[]>([]);
   const [error, setError] = useState('');
+  const [listenerFailed, setListenerFailed] = useState(false);
   const [pending, setPending] = useState(0);
   const [syncSources, setSyncSources] = useState<Partial<Record<SyncSource, SyncMetadata>>>({});
   const sync = summarizeSync(syncSources);
@@ -62,13 +63,13 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   useEffect(() => {
     const refs = auditRefs(db, auditId);
     const metadata = (key: SyncSource, value: SyncMetadata) => setSyncSources(previous => ({ ...previous, [key]: value }));
-    const fail = (e: unknown) => setError(authMessage(e));
+    const fail = (e: unknown) => { setListenerFailed(true); setError(authMessage(e)); };
     const stops = [
       onSnapshot(refs.audit, { includeMetadataChanges: true }, s => { setAudit(s.exists() ? toAudit(s.id, s.data()) : null); setAuditLoaded(true); metadata('audit', s.metadata); }, fail),
-      onSnapshot(refs.catalog, { includeMetadataChanges: true }, s => { setCatalogDocs(s.docs.map(d => { const data = d.data(); return { id: d.id, data: () => data }; })); metadata('catalog', s.metadata); }, fail),
-      onSnapshot(refs.counts, { includeMetadataChanges: true }, s => { setBuckets(s.docs.map(d => toBucket(d.data()))); metadata('counts', s.metadata); }, fail),
-      onSnapshot(refs.departments, { includeMetadataChanges: true }, s => { setDepartments(s.docs.map(d => toDepartment(d.id, d.data())).sort((a, b) => a.name.localeCompare(b.name, 'es'))); metadata('departments', s.metadata); }, fail),
-      onSnapshot(refs.unregistered, { includeMetadataChanges: true }, s => { setUnregistered(s.docs.map(d => toUnregistered(d.data()))); metadata('unregistered', s.metadata); }, fail),
+      onSnapshot(refs.catalog, { includeMetadataChanges: true }, s => { if (s.docChanges().length) setCatalogDocs(s.docs.map(d => { const data = d.data(); return { id: d.id, data: () => data }; })); metadata('catalog', s.metadata); }, fail),
+      onSnapshot(refs.counts, { includeMetadataChanges: true }, s => { if (s.docChanges().length) setBuckets(s.docs.map(d => toBucket(d.data()))); metadata('counts', s.metadata); }, fail),
+      onSnapshot(refs.departments, { includeMetadataChanges: true }, s => { if (s.docChanges().length) setDepartments(s.docs.map(d => toDepartment(d.id, d.data())).sort((a, b) => a.name.localeCompare(b.name, 'es'))); metadata('departments', s.metadata); }, fail),
+      onSnapshot(refs.unregistered, { includeMetadataChanges: true }, s => { if (s.docChanges().length) setUnregistered(s.docs.map(d => toUnregistered(d.data()))); metadata('unregistered', s.metadata); }, fail),
     ];
     last.current = null;
     return () => stops.forEach(stop => stop());
@@ -79,7 +80,8 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   const contributors = useMemo(() => contributorsFrom(buckets), [buckets]);
   const productsRef = useRef(products);
   useEffect(() => { productsRef.current = products; }, [products]);
-  const loading = !auditLoaded || catalogDocs.length < (audit?.catalog?.chunks ?? 0);
+  const loading = !auditLoaded || Boolean(audit && !auditDataLoaded(syncSources, audit.catalog?.chunks ?? 0, catalogDocs.length, buckets.length));
+  const ready = !loading && sync.confirmed && pending === 0 && !error && !listenerFailed;
 
   // Las escrituras no se esperan para contar: sin señal quedan en la cola local y se confirman al reconectar.
   const track = useCallback((promise: Promise<unknown>) => {
@@ -119,7 +121,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     try { await action(); setError(''); return true; } catch (e) { setError(authMessage(e)); return false; }
   };
   return {
-    audit, products, departments, contributors, loading, error, setError, pending: Math.max(pending, sync.pending ? 1 : 0), synced: sync.confirmed && pending === 0 && !error, canUndo,
+    audit, products, departments, contributors, loading, error, setError, pending: Math.max(pending, sync.pending ? 1 : 0), synced: ready, canUndo,
     recordCount, register, undo,
     editUnregistered: (code: string, patch: { name?: string; note?: string }) => optimistic(editUnregistered(db, user, auditId, code, patch)),
     excludeUnregistered: (code: string, reason: string) => awaited(() => setUnregisteredExcluded(db, user, auditId, code, true, reason)),
@@ -132,9 +134,12 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     release: (name: string) => awaited(() => releaseDepartment(db, user, auditId, name)),
     setStatus: (name: string, status: DepartmentStatus) => awaited(() => setDepartmentStatus(db, user, auditId, name, status)),
     reassign: (name: string, to: { uid: string; name: string } | null) => awaited(() => reassignDepartment(db, user, auditId, name, to)),
-    setAuditStatus: (status: AuditStatus) => awaited(() => setAuditStatus(db, user, auditId, status)),
-    saveNotes: (notes: string) => awaited(() => saveAuditNotes(db, user, auditId, notes)),
-    verify: async () => verifyIntegrity(await readCaptures(db, auditId), buckets),
+    setAuditStatus: (status: AuditStatus) => awaited(() => {
+      if (!ready) throw new Error('Espera a que todos los cambios estén sincronizados antes de cambiar el estado.');
+      return setAuditStatus(db, user, auditId, status);
+    }),
+    saveNotes: (notes: string, expectedNotes: string) => awaited(() => saveAuditNotes(db, user, auditId, notes, expectedNotes)),
+    verify: () => verifyAuditIntegrity(db, auditId),
   };
 }
 export type CloudAuditStore = ReturnType<typeof useCloudAudit>;

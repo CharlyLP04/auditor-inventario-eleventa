@@ -1,8 +1,8 @@
-import { doc, collection, getDoc, getDocs, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, getDocsFromServer, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
 import type { Firestore, DocumentData, DocumentReference, WriteBatch, Transaction } from 'firebase/firestore';
 import type { Product, CountMode, ImportReport } from '../../types';
 import { isCounted, roundQuantity, validQuantity } from '../auditState';
-import { BUCKETS, bucketOf, codeKey, departmentKey, splitCatalog, planCapture, assembleProducts, mergeBuckets } from './model';
+import { BUCKETS, bucketOf, codeKey, departmentKey, splitCatalog, planCapture, verifyIntegrity, assembleProducts, mergeBuckets } from './model';
 import type { BucketData, UnregisteredDoc } from './model';
 
 /** Operaciones de la auditoría compartida en Firestore. Las reglas (firestore.rules) validan cada escritura. */
@@ -253,10 +253,14 @@ export function setAuditStatus(db: Firestore, admin: CloudUser, auditId: string,
   logEvent(batch, refs.events, admin, 'status', status);
   return batch.commit();
 }
-export function saveAuditNotes(db: Firestore, user: CloudUser, auditId: string, notes: string) {
-  const batch = writeBatch(db);
-  batch.update(auditRefs(db, auditId).audit, { notes: notes.slice(0, 10000), ...stamp(user) });
-  return batch.commit();
+export function saveAuditNotes(db: Firestore, user: CloudUser, auditId: string, notes: string, expectedNotes: string) {
+  const ref = auditRefs(db, auditId).audit;
+  return runTransaction(db, async transaction => {
+    const current = await transaction.get(ref);
+    if (!current.exists() || current.data().status !== 'in_progress') throw new Error('La auditoría ya no está en curso.');
+    if ((current.data().notes ?? '') !== expectedNotes) throw new Error('Otra persona cambió las notas. Copia tu texto antes de descartarlo y revisa la versión actual para combinar los cambios.');
+    transaction.update(ref, { notes: notes.slice(0, 10000), ...stamp(user) });
+  });
 }
 export function saveMember(db: Firestore, admin: CloudUser, uid: string, member: { name: string; email?: string; role: 'admin' | 'auditor'; active: boolean }) {
   const email = member.email?.trim();
@@ -289,4 +293,17 @@ export async function readAuditState(db: Firestore, auditId: string) {
 export async function readCaptures(db: Firestore, auditId: string): Promise<CaptureRecord[]> {
   const snapshot = await getDocs(auditRefs(db, auditId).captures);
   return snapshot.docs.map(d => { const data = d.data(); return { id: d.id, code: data.code, delta: data.delta, mode: data.mode, by: data.by, byName: data.byName, at: iso(data.at), voids: data.voids, department: data.department, outsideAssignment: data.outsideAssignment }; });
+}
+
+/** Los contadores deben permanecer estables durante la lectura del historial. */
+export async function verifyAuditIntegrity(db: Firestore, auditId: string) {
+  const refs = auditRefs(db, auditId);
+  const before = await getDocsFromServer(refs.counts);
+  const captures = await getDocsFromServer(refs.captures);
+  const after = await getDocsFromServer(refs.counts);
+  const fingerprint = (snapshot: typeof before) => JSON.stringify(snapshot.docs.map(d => [d.id, d.data()]));
+  if (before.metadata.hasPendingWrites || after.metadata.hasPendingWrites || captures.metadata.hasPendingWrites || fingerprint(before) !== fingerprint(after)) {
+    throw new Error('El equipo sigue contando. Espera a que terminen los envíos y vuelve a verificar.');
+  }
+  return verifyIntegrity(captures.docs.map(d => ({ code: d.data().code, delta: d.data().delta })), after.docs.map(d => toBucket(d.data())));
 }

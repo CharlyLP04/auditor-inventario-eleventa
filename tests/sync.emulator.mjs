@@ -9,7 +9,7 @@ import { initializeFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, dis
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createCompany, createCloudAudit, recordCapture, undoCapture, registerUnregistered, editUnregistered, setUnregisteredExcluded,
-  linkUnregistered, uploadLocalAudit, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment, setAuditStatus, readAuditState, readCaptures, auditRefs,
+  linkUnregistered, uploadLocalAudit, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment, setAuditStatus, readAuditState, readCaptures, auditRefs, saveAuditNotes, verifyAuditIntegrity,
 } from '../src/services/cloud/repository.ts';
 import { verifyIntegrity } from '../src/services/cloud/model.ts';
 import { calculateStats } from '../src/services/auditState.ts';
@@ -225,4 +225,18 @@ test('una auditoría local se sube a la nube con sus conteos sin tocar los datos
   assert.equal(byCode['101'].counted, true); assert.equal(byCode['101'].physicalStock, 0);
   assert.equal(byCode['NF-1'].isUnregistered, true); assert.equal(byCode['NF-1'].description, 'Caja sin etiqueta');
   assert.equal(byCode['NF-2'].excludedAt, '2026-10-01T10:00:00.000Z');
+});
+
+test('notas simultáneas: conserva el cambio remoto y rechaza el borrador obsoleto', async () => {
+  await setAuditStatus(oscar.db, oscar.user, auditId, 'in_progress');
+  const before = (await state(oscar)).audit.notes ?? '';
+  await saveAuditNotes(oscar.db, oscar.user, auditId, 'Notas de Oscar', before);
+  await assert.rejects(saveAuditNotes(charly.db, charly.user, auditId, 'Notas de Charly', before), /Otra persona/);
+  assert.equal((await state(charly)).audit.notes, 'Notas de Oscar');
+  await saveAuditNotes(charly.db, charly.user, auditId, 'Notas combinadas', 'Notas de Oscar');
+  assert.equal((await state(oscar)).audit.notes, 'Notas combinadas');
+});
+
+test('integridad: consulta historial y contadores actuales del servidor', async () => {
+  assert.deepEqual(await verifyAuditIntegrity(oscar.db, auditId), []);
 });

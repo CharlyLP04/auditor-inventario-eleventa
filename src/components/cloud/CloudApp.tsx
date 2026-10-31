@@ -38,7 +38,7 @@ export default function CloudApp({ onUseLocal }: { onUseLocal: () => void }) {
     </header>
     <main id="contenido" className="app-main" tabIndex={-1}>
       {session.status === 'loading' && <p role="status" className="message">Abriendo tu sesión…</p>}
-      {session.status === 'signedOut' && <AccountForm onSubmit={async (name, password, register) => { try { await (register ? signUp(name, password) : signIn(name, password)); } catch (e) { throw new Error(authMessage(e)); } }}><p>La primera cuenta administra el equipo. Las siguientes solicitan acceso y un administrador las activa por nombre.</p></AccountForm>}
+      {session.status === 'signedOut' && <AccountForm shared onSubmit={async (name, password, register) => { try { await (register ? signUp(name, password) : signIn(name, password)); } catch (e) { throw new Error(authMessage(e)); } }}><p>La primera cuenta administra el equipo. Las siguientes solicitan acceso y un administrador las activa por nombre.</p></AccountForm>}
       {session.status === 'noAccess' && <NoAccess reason={session.reason} />}
       {session.status === 'ready' && <Workspace key={session.user.uid} user={session.user} onPending={setPending} />}
     </main>
