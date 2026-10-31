@@ -17,7 +17,7 @@ import { AuditSummary } from '../AuditSummary';
 import { AuditContext } from '../AuditContext';
 import { CatalogVerification } from '../CatalogVerification';
 import { DepartmentSummary } from '../DepartmentSummary';
-import { BarcodeScanner } from '../BarcodeScanner';
+const BarcodeScanner = lazy(() => import('../BarcodeScanner').then(m => ({ default: m.BarcodeScanner })));
 
 const ExportModal = lazy(() => import('../ExportModal').then(m => ({ default: m.ExportModal })));
 type Tab = 'departments' | 'scanner' | 'list' | 'stats';
@@ -112,10 +112,10 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
     {tab === 'scanner' && (readOnly
       ? <p className="message">La auditoría está {audit.status === 'completed' ? 'completada' : 'cerrada'}. Un administrador puede reabrirla.</p>
       : <div className="count-layout">
-        <BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={prefs} onPreferencesChange={savePrefs} canUndo={store.canUndo}
+        <Suspense fallback={<p role="status">Abriendo escáner…</p>}><BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={prefs} onPreferencesChange={savePrefs} canUndo={store.canUndo}
           onUndo={async () => { const done = await store.undo(); if (done) setLastScannedInfo(null); return done; }}
           onRegisterUnregistered={async input => { const saved = store.register(input); setLastScannedInfo({ code: saved.code, description: saved.description, quantity: saved.physicalStock, theoretical: 0, isNew: true }); return saved; }}
-          onRestoreUnregistered={async code => store.restoreUnregistered(code)} />
+          onRestoreUnregistered={async code => store.restoreUnregistered(code)} /></Suspense>
         <aside className="desktop-only"><AuditSummary compact stats={stats} products={products} /></aside>
       </div>)}
     {tab === 'list' && <InventoryTable key={auditId} viewKey={`cloud:${user.uid}:${auditId}`} products={products} readOnly={readOnly} isAdmin={false}

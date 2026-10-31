@@ -11,12 +11,21 @@ const withoutZeros = (code: string) => code.replace(/^0+/, '');
 
 interface Entry { product: Product; code: string; sku: string; text: string; tokens: string[]; }
 interface Index { entries: Entry[]; byCode: Map<string, Product>; }
-// El índice se recalcula solo cuando cambia el arreglo de productos (cada guardado crea uno nuevo).
+// Reutiliza la normalización de productos inmutables que no cambiaron al contar.
+const entries = new WeakMap<Product, Entry>();
+function entryOf(product: Product): Entry {
+  let entry = entries.get(product);
+  if (!entry) {
+    entry = { product, code: product.code.toLowerCase(), sku: product.sku?.trim().toLowerCase() ?? '', text: normalizeText(product.description), tokens: tokenize(product.description) };
+    entries.set(product, entry);
+  }
+  return entry;
+}
 const indexes = new WeakMap<Product[], Index>();
 function indexOf(products: Product[]) {
   let index = indexes.get(products);
   if (!index) {
-    index = { entries: products.map(product => ({ product, code: product.code.toLowerCase(), sku: product.sku?.trim().toLowerCase() ?? '', text: normalizeText(product.description), tokens: tokenize(product.description) })), byCode: new Map(products.map(p => [p.code, p])) };
+    index = { entries: products.map(entryOf), byCode: new Map(products.map(p => [p.code, p])) };
     indexes.set(products, index);
   }
   return index;

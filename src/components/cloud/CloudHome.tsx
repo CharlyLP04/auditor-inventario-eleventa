@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import type { Firestore } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
+import type { Firestore, QueryDocumentSnapshot } from 'firebase/firestore';
 import { ArrowUpRight, Plus, UploadCloud, UserPlus } from 'lucide-react';
 import type { Product, ImportReport, AuditRecord } from '../../types';
 import type { CloudUser, CloudAudit, CloudCompany } from '../../services/cloud/repository';
-import { createCompany, createCloudAudit, uploadLocalAudit, saveMember } from '../../services/cloud/repository';
+import { createCompany, createCloudAudit, uploadLocalAudit, saveMember, readAuditHistory } from '../../services/cloud/repository';
 import type { CloudMember } from '../../hooks/useCloudAudit';
 import { authMessage } from '../../hooks/useCloudSession';
 import { readWorkspace } from '../../services/storageIndexedDB';
@@ -20,13 +20,13 @@ export function CloudHome({ db, user, workspace, online, onOpen }: {
   const isAdmin = user.role === 'admin';
   const companyName = (id: string) => companies.find(c => c.id === id)?.name ?? 'Empresa';
   const open = audits.filter(a => a.status === 'in_progress');
-  const history = audits.filter(a => a.status !== 'in_progress');
+
   return <div className="cloud-home">
     <section aria-labelledby="open-audits">
       <div className="page-heading"><div><p className="eyebrow">AUDITORÍAS EN EQUIPO</p><h2 id="open-audits">Elige la auditoría</h2></div></div>
       {!open.length && <p className="message">{isAdmin ? 'No hay auditorías abiertas. Crea una abajo con el catálogo de eleventa.' : 'No hay auditorías abiertas. Un administrador debe crearla.'}</p>}
       <div className="cloud-audit-list">{open.map(a => <AuditCard key={a.id} audit={a} company={companyName(a.companyId)} onOpen={() => onOpen(a.id)} />)}</div>
-      {history.length > 0 && <details className="cloud-history"><summary>Historial ({history.length})</summary><div className="cloud-audit-list">{history.map(a => <AuditCard key={a.id} audit={a} company={companyName(a.companyId)} onOpen={() => onOpen(a.id)} />)}</div></details>}
+      <AuditHistory db={db} companyName={companyName} onOpen={onOpen} />
     </section>
     {isAdmin && <NewAudit db={db} user={user} companies={companies} online={online} onCreated={onOpen} />}
     {isAdmin && <UploadLocal db={db} user={user} companies={companies} online={online} onCreated={onOpen} />}
@@ -118,4 +118,29 @@ function Members({ db, user, members, online }: { db: Firestore; user: CloudUser
     <p>Los compañeros crean su cuenta con nombre y contraseña. Activa su solicitud aquí para incorporarlos al equipo.</p>
     {message && <p role="status" className="message">{message}</p>}
   </section>;
+}
+
+function AuditHistory({ db, companyName, onOpen }: { db: Firestore; companyName: (id: string) => string; onOpen: (id: string) => void }) {
+  const [audits, setAudits] = useState<CloudAudit[]>([]);
+  const [loaded, setLoaded] = useState(false), [busy, setBusy] = useState(false), [more, setMore] = useState(true), [error, setError] = useState('');
+  const cursor = useRef<QueryDocumentSnapshot | undefined>(undefined);
+  const fetching = useRef(false);
+  const load = async () => {
+    if (fetching.current || !more) return;
+    fetching.current = true; setBusy(true); setError('');
+    try {
+      const page = await readAuditHistory(db, cursor.current);
+      setAudits(previous => [...new Map([...previous, ...page.audits].map(a => [a.id, a])).values()]);
+      cursor.current = page.cursor; setMore(page.hasMore); setLoaded(true);
+    } catch (e) { setError(authMessage(e)); }
+    finally { fetching.current = false; setBusy(false); }
+  };
+  return <details className="cloud-history" onToggle={event => { if (event.currentTarget.open && !loaded && !error) void load(); }}>
+    <summary>Historial de auditorías</summary>
+    <div className="cloud-audit-list">{audits.map(a => <AuditCard key={a.id} audit={a} company={companyName(a.companyId)} onOpen={() => onOpen(a.id)} />)}</div>
+    {busy && <p role="status">Cargando historial…</p>}
+    {error && <p role="alert">{error}</p>}
+    {loaded && !audits.length && <p>No hay auditorías terminadas.</p>}
+    {more && !busy && (loaded || error) && <button className="secondary" onClick={() => void load()}>{error ? 'Reintentar' : 'Cargar más'}</button>}
+  </details>;
 }

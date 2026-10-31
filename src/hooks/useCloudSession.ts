@@ -21,6 +21,7 @@ export function authMessage(error: unknown) {
   if (code === 'auth/network-request-failed') return 'Sin conexión. Necesitas internet para iniciar sesión la primera vez en este dispositivo.';
   if (code === 'auth/user-disabled') return 'Esta cuenta está desactivada. Habla con un administrador.';
   if (code === 'permission-denied') return 'Tu cuenta no tiene permiso para esta acción.';
+  if (code === 'resource-exhausted') return 'Se alcanzó una cuota de Firebase. No borres los datos del navegador. Revisa el consumo y espera a que se restablezca la cuota antes de continuar sincronizando.';
   if (code === 'unavailable') return 'No se pudo completar la operación con el servidor. Las correcciones y vinculaciones requieren conexión; vuelve a intentarlo.';
   return error instanceof Error ? error.message : 'Ocurrió un error inesperado. Intenta de nuevo.';
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import type { DocumentData, Firestore } from 'firebase/firestore';
 import type { Product, CountMode } from '../types';
 import {
@@ -27,7 +27,7 @@ export function useOnline() {
   return online;
 }
 
-export function useCloudWorkspace(db: Firestore, user: CloudUser) {
+export function useCloudWorkspace(db: Firestore, user: CloudUser, showAuditList = true) {
   const [companies, setCompanies] = useState<CloudCompany[]>([]);
   const [audits, setAudits] = useState<CloudAudit[]>([]);
   const [members, setMembers] = useState<CloudMember[]>([]);
@@ -36,11 +36,17 @@ export function useCloudWorkspace(db: Firestore, user: CloudUser) {
     const fail = (e: unknown) => setError(authMessage(e));
     const stops = [
       onSnapshot(collection(db, 'companies'), s => setCompanies(s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<CloudCompany, 'id'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
-      onSnapshot(collection(db, 'audits'), s => setAudits(s.docs.filter(d => d.data().status !== 'initializing').map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))), fail),
+
       onSnapshot(collection(db, 'members'), s => setMembers(s.docs.map(d => ({ uid: d.id, ...(d.data() as Omit<CloudMember, 'uid'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
     ];
     return () => stops.forEach(stop => stop());
   }, [db, user.uid]);
+  useEffect(() => {
+    if (!showAuditList) return;
+    return onSnapshot(query(collection(db, 'audits'), where('status', '==', 'in_progress')),
+      snapshot => setAudits(snapshot.docs.map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))),
+      error => setError(authMessage(error)));
+  }, [db, user.uid, showAuditList]);
   return { companies, audits, members, error };
 }
 
@@ -62,7 +68,10 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
 
   useEffect(() => {
     const refs = auditRefs(db, auditId);
-    const metadata = (key: SyncSource, value: SyncMetadata) => setSyncSources(previous => ({ ...previous, [key]: value }));
+    const metadata = (key: SyncSource, value: SyncMetadata) => setSyncSources(previous => {
+      const old = previous[key];
+      return old?.fromCache === value.fromCache && old?.hasPendingWrites === value.hasPendingWrites ? previous : { ...previous, [key]: value };
+    });
     const fail = (e: unknown) => { setListenerFailed(true); setError(authMessage(e)); };
     const stops = [
       onSnapshot(refs.audit, { includeMetadataChanges: true }, s => { setAudit(s.exists() ? toAudit(s.id, s.data()) : null); setAuditLoaded(true); metadata('audit', s.metadata); }, fail),
@@ -76,7 +85,8 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   }, [db, auditId]);
 
   const catalog = useMemo(() => catalogFrom(catalogDocs), [catalogDocs]);
-  const products = useMemo(() => assembleProducts(catalog, buckets, unregistered), [catalog, buckets, unregistered]);
+  const [productCache] = useState(() => new WeakMap<Product, Product>());
+  const products = useMemo(() => assembleProducts(catalog, buckets, unregistered, productCache), [catalog, buckets, unregistered, productCache]);
   const contributors = useMemo(() => contributorsFrom(buckets), [buckets]);
   const productsRef = useRef(products);
   useEffect(() => { productsRef.current = products; }, [products]);

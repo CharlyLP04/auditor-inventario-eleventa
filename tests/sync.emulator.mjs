@@ -9,7 +9,7 @@ import { initializeFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, dis
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createCompany, createCloudAudit, recordCapture, undoCapture, registerUnregistered, editUnregistered, setUnregisteredExcluded,
-  linkUnregistered, uploadLocalAudit, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment, setAuditStatus, readAuditState, readCaptures, auditRefs, saveAuditNotes, verifyAuditIntegrity,
+  linkUnregistered, uploadLocalAudit, claimDepartment, releaseDepartment, setDepartmentStatus, reassignDepartment, setAuditStatus, readAuditState, readCaptures, auditRefs, saveAuditNotes, verifyAuditIntegrity, readAuditHistory,
 } from '../src/services/cloud/repository.ts';
 import { verifyIntegrity } from '../src/services/cloud/model.ts';
 import { calculateStats } from '../src/services/auditState.ts';
@@ -239,4 +239,22 @@ test('notas simultáneas: conserva el cambio remoto y rechaza el borrador obsole
 
 test('integridad: consulta historial y contadores actuales del servidor', async () => {
   assert.deepEqual(await verifyAuditIntegrity(oscar.db, auditId), []);
+});
+
+test('historial: lee páginas de 20, sin duplicados ni auditorías abiertas', async () => {
+  await env.withSecurityRulesDisabled(async context => {
+    const db=context.firestore();
+    await Promise.all(Array.from({length:23}, (_,i) => setDoc(doc(db,'audits','history_'+String(i).padStart(2,'0')), {
+      status:i%2 ? 'completed':'closed', period:'2026-10', title:'Historial de prueba', companyId:'history'
+    })));
+  });
+  const first=await readAuditHistory(oscar.db);
+  assert.equal(first.audits.length,20);
+  assert.equal(first.hasMore,true);
+  const second=await readAuditHistory(oscar.db,first.cursor);
+  const ids=[...first.audits,...second.audits].map(a=>a.id);
+  assert.equal(new Set(ids).size,ids.length);
+  assert.equal(ids.filter(id=>id.startsWith('history_')).length,23);
+  assert.ok([...first.audits,...second.audits].every(a=>['completed','closed'].includes(a.status)));
+  assert.equal(second.hasMore,false);
 });

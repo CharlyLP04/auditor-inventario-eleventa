@@ -1,5 +1,5 @@
-import { doc, collection, getDoc, getDocs, getDocsFromServer, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
-import type { Firestore, DocumentData, DocumentReference, WriteBatch, Transaction } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, getDocsFromServer, query, where, limit, startAfter, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
+import type { Firestore, DocumentData, DocumentReference, WriteBatch, Transaction, QueryDocumentSnapshot } from 'firebase/firestore';
 import type { Product, CountMode, ImportReport } from '../../types';
 import { isCounted, roundQuantity, validQuantity } from '../auditState';
 import { BUCKETS, bucketOf, codeKey, departmentKey, splitCatalog, planCapture, verifyIntegrity, assembleProducts, mergeBuckets } from './model';
@@ -306,4 +306,11 @@ export async function verifyAuditIntegrity(db: Firestore, auditId: string) {
     throw new Error('El equipo sigue contando. Espera a que terminen los envíos y vuelve a verificar.');
   }
   return verifyIntegrity(captures.docs.map(d => ({ code: d.data().code, delta: d.data().delta })), after.docs.map(d => toBucket(d.data())));
+}
+
+export const HISTORY_PAGE_SIZE = 20;
+export async function readAuditHistory(db: Firestore, cursor?: QueryDocumentSnapshot) {
+  const snapshot = await getDocs(query(collection(db, 'audits'), where('status', 'in', ['completed', 'closed']),
+    ...(cursor ? [startAfter(cursor)] : []), limit(HISTORY_PAGE_SIZE)));
+  return { audits: snapshot.docs.map(d => toAudit(d.id, d.data())), cursor: snapshot.docs.at(-1), hasMore: snapshot.size === HISTORY_PAGE_SIZE };
 }

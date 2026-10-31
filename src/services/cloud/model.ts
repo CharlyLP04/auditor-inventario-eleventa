@@ -55,11 +55,17 @@ export function mergeBuckets(buckets: BucketData[]): BucketData {
 export const contributorsOf = (buckets: BucketData[], code: string) => Object.keys(mergeBuckets(buckets).u[code] ?? {});
 
 /** Productos para la interfaz: catálogo + contadores compartidos + no encontrados (uno por código). */
-export function assembleProducts(catalogChunks: Product[][], buckets: BucketData[], unregistered: UnregisteredDoc[]): Product[] {
-  const { q, n } = mergeBuckets(buckets);
+export function assembleProducts(catalogChunks: Product[][], buckets: BucketData[], unregistered: UnregisteredDoc[], cache?: WeakMap<Product, Product>): Product[] {
+  const q: Record<string, number> = Object.create(null), n: Record<string, number> = Object.create(null);
+  for (const bucket of buckets) { Object.assign(q, bucket.q); Object.assign(n, bucket.n); }
   const known = new Set<string>();
   const counted = (code: string) => ({ physicalStock: Math.max(0, roundQuantity(q[code] ?? 0)), counted: (n[code] ?? 0) > 0 });
-  const catalog = catalogChunks.flat().map(p => { known.add(p.code); return { ...p, ...counted(p.code) }; });
+  const catalog = catalogChunks.flat().map(p => {
+    known.add(p.code);
+    const state = counted(p.code), previous = cache?.get(p);
+    if (previous && previous.physicalStock === state.physicalStock && previous.counted === state.counted) return previous;
+    const product = { ...p, ...state }; cache?.set(p, product); return product;
+  });
   const extra: Product[] = unregistered.map(doc => {
     known.add(doc.code);
     const labels = Object.values(doc.labels ?? {});

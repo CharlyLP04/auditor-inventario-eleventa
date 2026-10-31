@@ -47,9 +47,9 @@ export default function CloudApp({ onUseLocal }: { onUseLocal: () => void }) {
 
 function Workspace({ user, onPending }: { user: CloudUser; onPending: (count: number) => void }) {
   const { db } = getCloud();
-  const workspace = useCloudWorkspace(db, user);
   const online = useOnline();
   const [auditId, setAuditId] = useState<string | null>(() => readSelected(user.uid));
+  const workspace = useCloudWorkspace(db, user, !auditId);
   const open = (id: string | null) => {
     const url = new URL(location.href);
     if (id) url.searchParams.set('audit', id); else url.searchParams.delete('audit');

@@ -23,7 +23,17 @@
     },
     {
       "collectionGroup": "audits",
-      "fieldPath": "importReport",
+      "fieldPath": "catalog",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "audits",
+      "fieldPath": "notes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "unregistered",
+      "fieldPath": "labels",
       "indexes": []
     }
   ]
