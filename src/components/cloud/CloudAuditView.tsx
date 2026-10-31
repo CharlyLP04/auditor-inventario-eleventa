@@ -1,4 +1,5 @@
 import { useViewPreference, useViewScroll } from '../../hooks/useViewPreference';
+import { auditLink } from '../../services/cloud/teamState';
 import { transition } from '../../services/transition';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Firestore } from 'firebase/firestore';
@@ -44,6 +45,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   const [prefs, savePrefs] = useDevicePreferences(user.uid);
   const [lastScannedInfo, setLastScannedInfo] = useState<{ code: string; description: string; quantity: number; theoretical: number; isNew: boolean } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
   const [profile, setProfile] = useState<AuditorProfile | undefined>();
   const authorized = useRef(new Set<string>());
   useEffect(() => { onPending(store.pending); }, [store.pending, onPending]);
@@ -55,7 +57,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   const readOnly = audit?.status !== 'in_progress';
   const mine = store.departments.filter(d => d.assignee === user.uid);
 
-  if (!audit) return <div><p role="status" className="message">{store.error || 'Abriendo auditoría…'}</p><button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Volver</button></div>;
+  if (!audit) return <div><p role="status" className="message">{store.error || (store.loading ? 'Abriendo auditoría…' : 'Esta auditoría no existe. Vuelve a la lista o pide un enlace actualizado.')}</p><button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Volver</button></div>;
   const record: AuditRecord = { id: audit.id, companyId: audit.companyId, title: audit.title, period: audit.period, status: audit.status, createdAt: audit.createdAt ?? '', completedAt: audit.completedAt ?? undefined, products, stats, notes: audit.notes };
   const companyRecord: Company | undefined = company ? { id: company.id, name: company.name, contactName: company.contactName, phone: company.phone, address: company.address, notes: company.notes, createdAt: '' } : undefined;
 
@@ -90,8 +92,10 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   return <div className="cloud-audit">
     <div className="cloud-audit-bar">
       <button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Auditorías</button>
-      <SyncBadge online={online} pending={store.pending} />
+      <button className="secondary" onClick={() => setShareUrl(auditLink(location.href, auditId))}>Compartir auditoría</button>
+      <SyncBadge online={online} pending={store.pending} synced={store.synced} error={Boolean(store.error)} />
     </div>
+    {shareUrl && <section className="message" aria-label="Compartir auditoría"><p>Abre este enlace en los otros teléfonos o computadoras. Cada persona debe entrar con su cuenta y tener acceso al equipo.</p><label>Enlace de la auditoría<input readOnly value={shareUrl} onFocus={event => event.target.select()} /></label><button className="secondary" onClick={() => setShareUrl('')}>Cerrar enlace</button></section>}
     <AuditContext key={audit.id} audit={record} companyName={company?.name} busy={false} pendingCount={stats.notCountedCount} canManage={isAdmin}
       updateAudit={async (_id, patch) => patch.status !== audit.status ? store.setAuditStatus(patch.status) : store.saveNotes(patch.notes ?? '')}
       onFinish={isAdmin ? () => setExporting(true) : undefined} />
@@ -132,11 +136,11 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   </div>;
 }
 
-function SyncBadge({ online, pending }: { online: boolean; pending: number }) {
-  const state = !online ? 'offline' : pending ? 'syncing' : 'synced';
+function SyncBadge({ online, pending, synced, error }: { online: boolean; pending: number; synced: boolean; error: boolean }) {
+  const state = !online || error ? 'offline' : !synced || pending ? 'syncing' : 'synced';
   return <span className={`sync-badge sync-${state}`} role="status" aria-live="polite">
     {state === 'offline' ? <CloudOff size={16} aria-hidden="true" /> : state === 'syncing' ? <CloudUpload size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
-    {state === 'offline' ? `Sin conexión${pending ? ` · ${pending} por enviar` : ''}` : state === 'syncing' ? `Enviando ${pending}…` : 'Todo sincronizado'}
+    {error ? 'Revisa el aviso de sincronización' : !online ? `Sin conexión${pending ? ' · cambios por enviar' : ''}` : pending ? 'Enviando cambios…' : !synced ? 'Esperando confirmación del servidor…' : 'Todo sincronizado'}
   </span>;
 }
 

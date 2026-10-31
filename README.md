@@ -1,6 +1,6 @@
 # Auditor de Inventario eleventa · Escritorio y celular
 
-Aplicación local con dos interfaces adaptables: escritorio con navegación lateral, columnas y paginación; celular con tarjetas, botones de 48 px y navegación inferior. Comparte el mismo código, pero cada navegador conserva su propio inventario.
+Aplicación local con dos interfaces adaptables: escritorio con navegación lateral, columnas y paginación; celular con tarjetas, botones de 48 px y navegación inferior. En modo local cada navegador conserva su propio inventario. En modo equipo, con Firebase configurado, varias personas comparten el catálogo y suman sus conteos en tiempo real.
 
 ## Inicio en Windows
 
@@ -32,6 +32,8 @@ La versión compilada almacena los recursos para abrirse sin conexión después 
 Con Firebase configurado (ver [docs/puesta-en-marcha-equipo.md](docs/puesta-en-marcha-equipo.md)), cada persona entra con su cuenta y la app ofrece dos modos:
 - **Equipo:** auditoría compartida en vivo, con departamentos asignables, historial de quién capturó qué y conteo sin conexión con envío automático.
 - **Local:** como hasta ahora, solo en ese dispositivo.
+
+Abre una auditoría y pulsa **Compartir auditoría** para copiar su enlace a los demás dispositivos. El enlace selecciona modo equipo y la misma auditoría; cada persona necesita su cuenta autorizada. **Todo sincronizado** aparece únicamente cuando Firebase confirma los datos y no quedan escrituras pendientes, incluso al reabrir la auditoría.
 
 Sin configuración, la app funciona únicamente en modo local y no descarga el SDK de Firebase. Las decisiones están en [ADR-0002](docs/adr/0002-colaboracion-en-tiempo-real-con-sesiones-por-persona.md) y el detalle técnico en [docs/diseno](docs/diseno/colaboracion-multidispositivo.md).
 

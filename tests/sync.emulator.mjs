@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword } from 'firebase/auth';
-import { initializeFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, disableNetwork, enableNetwork, waitForPendingWrites, onSnapshot, writeBatch } from 'firebase/firestore';
+import { initializeFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, disableNetwork, enableNetwork, waitForPendingWrites, onSnapshot, writeBatch, terminate } from 'firebase/firestore';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createCompany, createCloudAudit, recordCapture, undoCapture, registerUnregistered, editUnregistered, setUnregisteredExcluded,
@@ -16,6 +16,7 @@ import { calculateStats } from '../src/services/auditState.ts';
 
 const project = 'demo-auditor';
 const apps = [];
+const databases = [];
 let env, oscar, charly, auditId;
 async function client(name, email) {
   const app = initializeApp({ projectId: project, apiKey: 'demo-key', authDomain: 'localhost' }, name);
@@ -23,6 +24,7 @@ async function client(name, email) {
   const auth = getAuth(app);
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   const db = initializeFirestore(app, {});
+  databases.push(db);
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
   const { user } = await createUserWithEmailAndPassword(auth, email, 'contraseña-de-prueba');
   return { db, uid: user.uid };
@@ -51,7 +53,7 @@ before(async () => {
   const companyId = await createCompany(oscar.db, oscar.user, { name: 'Tienda de prueba' });
   auditId = await createCloudAudit(oscar.db, oscar.user, { companyId, period: '2026-11', products: catalog, report });
 });
-after(async () => { for (const app of apps) await deleteApp(app); await env?.cleanup(); });
+after(async () => { await Promise.all(databases.map(db => terminate(db))); for (const app of apps) await deleteApp(app); await env?.cleanup(); });
 
 test('1 · las dos personas entran a la misma auditoría y ven el mismo catálogo', async () => {
   const [a, b] = await Promise.all([state(oscar), state(charly)]);
@@ -177,6 +179,27 @@ test('soltar, completar y reasignar departamentos queda registrado', async () =>
   assert.equal(departments.find(d => d.name === 'Lácteos').status, 'done');
   assert.equal(departments.find(d => d.name === 'Abarrotes').assigneeName, 'Charly');
 });
+test('la cola pendiente se detecta al volver a suscribirse y solo se confirma tras reconectar', async () => {
+  await disableNetwork(charly.db);
+  const written = recordCapture(charly.db, charly.user, auditId, { code: '101', quantity: 1, mode: 'add' });
+  let metadata;
+  const stop = onSnapshot(auditRefs(charly.db, auditId).counts, { includeMetadataChanges: true }, snapshot => { metadata = snapshot.metadata; });
+  try {
+    await until(() => metadata?.hasPendingWrites === true, 'No recuperó las escrituras pendientes');
+    assert.equal(metadata.fromCache, true);
+    await enableNetwork(charly.db); await written.committed;
+    await until(() => metadata?.hasPendingWrites === false && metadata.fromCache === false, 'No confirmó el envío');
+  } finally { stop(); await enableNetwork(charly.db); }
+});
+
+test('una corrección desactualizada no borra lo contado en otro dispositivo', async () => {
+  const current = await product(charly, '101');
+  await recordCapture(oscar.db, oscar.user, auditId, { code: '101', quantity: 2, mode: 'add', current }).committed;
+  await assert.rejects(recordCapture(charly.db, charly.user, auditId, { code: '101', quantity: 1, mode: 'set', current }).committed, /cambió en otro dispositivo/);
+  assert.equal((await product(charly, '101')).physicalStock, current.physicalStock + 2);
+  assert.deepEqual(verifyIntegrity(await readCaptures(oscar.db, auditId), (await state(oscar)).buckets), []);
+});
+
 test('11 · al completar la auditoría ya no se aceptan capturas y el balance final es consistente', async () => {
   await setAuditStatus(oscar.db, oscar.user, auditId, 'completed');
   await assert.rejects(recordCapture(charly.db, charly.user, auditId, { code: '001', quantity: 1, mode: 'add', current: { physicalStock: 0 }, department: 'Lácteos' }).committed);
@@ -195,7 +218,7 @@ test('una auditoría local se sube a la nube con sus conteos sin tocar los datos
   const companyId = await createCompany(oscar.db, oscar.user, { name: 'Tienda migrada' });
   const result = await uploadLocalAudit(oscar.db, oscar.user, { companyId, period: '2026-10', products: local });
   assert.equal(JSON.stringify(local), snapshot, 'los datos locales no se modifican');
-  assert.equal(result.migrated, 3); assert.equal(result.skippedExcluded, 0);
+  assert.equal(result.migrated, 4, 'incluye el excluido preservado como traza, sin sumarlo al balance'); assert.equal(result.skippedExcluded, 0);
   const { products } = await readAuditState(charly.db, result.auditId);
   const byCode = Object.fromEntries(products.map(p => [p.code, p]));
   assert.equal(byCode['001'].physicalStock, 12); assert.equal(byCode['002'].counted, false);

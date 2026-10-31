@@ -11,8 +11,10 @@ import type { CloudUser } from '../../services/cloud/repository';
 import { CloudHome } from './CloudHome';
 import { CloudAuditView } from './CloudAuditView';
 
+import { sharedAuditId } from '../../services/cloud/teamState';
+
 const AUDIT_KEY = 'auditor_cloud_audit';
-const readSelected = (uid: string) => { try { return localStorage.getItem(`${AUDIT_KEY}::${uid}`); } catch { return null; } };
+const readSelected = (uid: string) => { try { return sharedAuditId(location.search) ?? localStorage.getItem(`${AUDIT_KEY}::${uid}`); } catch { return null; } };
 const saveSelected = (uid: string, id: string | null) => { try { if (id) localStorage.setItem(`${AUDIT_KEY}::${uid}`, id); else localStorage.removeItem(`${AUDIT_KEY}::${uid}`); } catch { /* Preferencia opcional. */ } };
 
 /** Modo equipo: cada persona entra con su cuenta y cuenta la misma auditoría desde su teléfono. */
@@ -20,7 +22,7 @@ export default function CloudApp({ onUseLocal }: { onUseLocal: () => void }) {
   const { session, signIn, signOut, signUp } = useCloudSession();
   const [pending, setPending] = useState(0);
   const leave = async () => {
-    if (pending > 0 && !window.confirm(`Hay ${pending} capturas que aún no llegan al servidor. Quedarán guardadas en este dispositivo y se enviarán cuando esta misma cuenta vuelva a entrar aquí. ¿Cerrar sesión?`)) return;
+    if (pending > 0 && !window.confirm(`Hay cambios que aún no llegan al servidor. Quedarán guardadas en este dispositivo y se enviarán cuando esta misma cuenta vuelva a entrar aquí. ¿Cerrar sesión?`)) return;
     await signOut();
   };
   return <div className="app-shell cloud-shell">
@@ -48,7 +50,12 @@ function Workspace({ user, onPending }: { user: CloudUser; onPending: (count: nu
   const workspace = useCloudWorkspace(db, user);
   const online = useOnline();
   const [auditId, setAuditId] = useState<string | null>(() => readSelected(user.uid));
-  const open = (id: string | null) => { transition(() => setAuditId(id)); saveSelected(user.uid, id); };
+  const open = (id: string | null) => {
+    const url = new URL(location.href);
+    if (id) url.searchParams.set('audit', id); else url.searchParams.delete('audit');
+    history.replaceState(null, '', url);
+    transition(() => setAuditId(id)); saveSelected(user.uid, id);
+  };
   return <>
     {!online && <p role="status" className="message warning cloud-offline">Sin conexión: puedes seguir contando; las capturas se guardan en este teléfono y se envían al volver la señal. Corregir totales, deshacer, vincular, tomar departamentos e importar requieren conexión.</p>}
     {workspace.error && <p role="alert" className="message warning">{workspace.error}</p>}

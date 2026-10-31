@@ -11,6 +11,8 @@ import type { CloudUser, CloudAudit, CloudDepartment, CloudCompany, DepartmentSt
 import { assembleProducts, verifyIntegrity } from '../services/cloud/model';
 import type { BucketData, UnregisteredDoc } from '../services/cloud/model';
 import { authMessage } from './useCloudSession';
+import { summarizeSync } from '../services/cloud/teamState';
+import type { SyncSource, SyncMetadata } from '../services/cloud/teamState';
 
 export interface CloudMember { uid: string; name: string; email?: string; role: 'admin' | 'auditor'; active: boolean; }
 
@@ -45,24 +47,28 @@ export function useCloudWorkspace(db: Firestore, user: CloudUser) {
 interface LastCapture { captureId: string; code: string; delta: number; department?: string; }
 export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   const [audit, setAudit] = useState<CloudAudit | null>(null);
+  const [auditLoaded, setAuditLoaded] = useState(false);
   const [catalogDocs, setCatalogDocs] = useState<{ id: string; data: () => DocumentData }[]>([]);
   const [buckets, setBuckets] = useState<BucketData[]>([]);
   const [departments, setDepartments] = useState<CloudDepartment[]>([]);
   const [unregistered, setUnregistered] = useState<UnregisteredDoc[]>([]);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(0);
+  const [syncSources, setSyncSources] = useState<Partial<Record<SyncSource, SyncMetadata>>>({});
+  const sync = summarizeSync(syncSources);
   const last = useRef<LastCapture | null>(null);
   const [canUndo, setCanUndo] = useState(false);
 
   useEffect(() => {
     const refs = auditRefs(db, auditId);
+    const metadata = (key: SyncSource, value: SyncMetadata) => setSyncSources(previous => ({ ...previous, [key]: value }));
     const fail = (e: unknown) => setError(authMessage(e));
     const stops = [
-      onSnapshot(refs.audit, s => setAudit(s.exists() ? toAudit(s.id, s.data()) : null), fail),
-      onSnapshot(refs.catalog, s => setCatalogDocs(s.docs.map(d => { const data = d.data(); return { id: d.id, data: () => data }; })), fail),
-      onSnapshot(refs.counts, s => setBuckets(s.docs.map(d => toBucket(d.data()))), fail),
-      onSnapshot(refs.departments, s => setDepartments(s.docs.map(d => toDepartment(d.id, d.data())).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
-      onSnapshot(refs.unregistered, s => setUnregistered(s.docs.map(d => toUnregistered(d.data()))), fail),
+      onSnapshot(refs.audit, { includeMetadataChanges: true }, s => { setAudit(s.exists() ? toAudit(s.id, s.data()) : null); setAuditLoaded(true); metadata('audit', s.metadata); }, fail),
+      onSnapshot(refs.catalog, { includeMetadataChanges: true }, s => { setCatalogDocs(s.docs.map(d => { const data = d.data(); return { id: d.id, data: () => data }; })); metadata('catalog', s.metadata); }, fail),
+      onSnapshot(refs.counts, { includeMetadataChanges: true }, s => { setBuckets(s.docs.map(d => toBucket(d.data()))); metadata('counts', s.metadata); }, fail),
+      onSnapshot(refs.departments, { includeMetadataChanges: true }, s => { setDepartments(s.docs.map(d => toDepartment(d.id, d.data())).sort((a, b) => a.name.localeCompare(b.name, 'es'))); metadata('departments', s.metadata); }, fail),
+      onSnapshot(refs.unregistered, { includeMetadataChanges: true }, s => { setUnregistered(s.docs.map(d => toUnregistered(d.data()))); metadata('unregistered', s.metadata); }, fail),
     ];
     last.current = null;
     return () => stops.forEach(stop => stop());
@@ -73,7 +79,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   const contributors = useMemo(() => contributorsFrom(buckets), [buckets]);
   const productsRef = useRef(products);
   useEffect(() => { productsRef.current = products; }, [products]);
-  const loading = !audit || catalogDocs.length < (audit.catalog?.chunks ?? 0);
+  const loading = !auditLoaded || catalogDocs.length < (audit?.catalog?.chunks ?? 0);
 
   // Las escrituras no se esperan para contar: sin señal quedan en la cola local y se confirman al reconectar.
   const track = useCallback((promise: Promise<unknown>) => {
@@ -113,7 +119,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     try { await action(); setError(''); return true; } catch (e) { setError(authMessage(e)); return false; }
   };
   return {
-    audit, products, departments, contributors, loading, error, setError, pending, canUndo,
+    audit, products, departments, contributors, loading, error, setError, pending: Math.max(pending, sync.pending ? 1 : 0), synced: sync.confirmed && pending === 0 && !error, canUndo,
     recordCount, register, undo,
     editUnregistered: (code: string, patch: { name?: string; note?: string }) => optimistic(editUnregistered(db, user, auditId, code, patch)),
     excludeUnregistered: (code: string, reason: string) => awaited(() => setUnregisteredExcluded(db, user, auditId, code, true, reason)),

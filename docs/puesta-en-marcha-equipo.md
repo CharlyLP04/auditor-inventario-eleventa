@@ -1,90 +1,46 @@
-# Puesta en marcha del modo equipo (Firebase)
+# Auditorías compartidas: PC y varios teléfonos
 
-Guía para activar la auditoría compartida: Oscar y Charly cuentan la misma auditoría desde sus teléfonos, cada uno con su cuenta. Mientras no se configure, la app sigue funcionando solo en modo local.
+## Configuración
 
-**Tiempo estimado:** 20 a 30 minutos. **Costo:** $0 en el plan Spark de Firebase (ver cuotas en el [diseño](diseno/colaboracion-multidispositivo.md#6-cuotas-plan-spark)).
+El proyecto de Firebase es **grid-auditor-eleventa**. La aplicación usa Firestore Standard con la base `(default)`, autenticación por contraseña y reglas de acceso por miembro. La configuración pública de Firebase está en `.env.local` en la copia del Escritorio; ese archivo no se sube a Git.
 
-## 1. Crear el proyecto (consola de Firebase)
+Para otras instalaciones copia `.env.example` como `.env.local` y completa las cuatro variables `VITE_FIREBASE_*`. En Vercel configura esas mismas variables y vuelve a compilar. Sin ellas el programa funciona solo en modo local y los dispositivos no se sincronizan.
 
-1. Entra a <https://console.firebase.google.com> con la cuenta de Google del negocio y crea un proyecto, por ejemplo `auditor-grid`. Google Analytics no es necesario.
-2. **Compilación → Firestore Database → Crear base de datos**:
-   - modo **producción**;
-   - ubicación cercana, por ejemplo `us-central1` o `northamerica-south1`. No se puede cambiar después.
-3. **Compilación → Authentication → Comenzar**:
-   - habilita **Correo electrónico/contraseña**;
-   - no habilites el enlace de correo ni otros proveedores.
-4. **Configuración del proyecto → Tus apps → Web (</>)**:
-   - registra la app;
-   - copia `apiKey`, `authDomain`, `projectId` y `appId`. Esta configuración no es secreta; la protección la dan las reglas.
+Las reglas e índices están en `firestore.rules` y `firestore.indexes.json`. La configuración de acceso por contraseña y dominios está en `firebase.json`. Para aplicar cambios autorizados:
 
-## 2. Cuentas y primer administrador
-
-1. **Authentication → Usuarios → Agregar usuario**: crea la cuenta de Oscar y la de Charly, cada una con su correo y una contraseña fuerte, que cada quien puede cambiar con "Olvidé mi contraseña".
-2. Copia el **UID de usuario** de Oscar, que aparece en la lista de usuarios.
-3. **Firestore → Iniciar colección** `members` → documento con ID = el UID de Oscar y estos campos:
-   - `name` (string): `Oscar`
-   - `role` (string): `admin`
-   - `active` (boolean): `true`
-4. El resto de las personas se agregan desde la app: Oscar entra y va a **Personas con acceso**. Charly inicia sesión una vez, la app le muestra su UID, y Oscar lo pega ahí con rol Administrador.
-
-## 3. Publicar las reglas de seguridad
-
-Desde la carpeta del proyecto, con la sesión de Google del negocio:
-
-```bash
-npx firebase login
-```
-```bash
-npx firebase use --add
-```
-```bash
-npx firebase deploy --only firestore:rules,firestore:indexes
+```powershell
+npx -y firebase-tools@latest deploy --only firestore,auth --project grid-auditor-eleventa
 ```
 
-Hasta que se publiquen las reglas, Firestore en modo producción rechaza todo: no hay una ventana de acceso abierto.
+## Primera sesión y equipo
 
-## 4. Configurar la app
+1. El responsable crea **la primera cuenta desde la app**, con nombre de usuario y contraseña. Esa cuenta administra el equipo; hazlo antes de distribuir el enlace.
+2. Cada colaborador crea su propia cuenta. Queda pendiente hasta que un administrador la active en **Personas con acceso**.
+3. El administrador crea la empresa y una auditoría compartida e importa el catálogo una sola vez. Para conservar un conteo local existente, usa **Subir auditoría local** desde el mismo navegador donde está guardado.
+4. Dentro de la auditoría pulsa **Compartir auditoría**, copia el enlace y ábrelo en las otras computadoras o teléfonos. El enlace no concede permisos: cada persona entra con su cuenta autorizada.
+5. Reparte los departamentos y cuenta. Las capturas de todos se suman; los cambios se reflejan sin recargar. Las correcciones de un total se rechazan si otra persona cambió ese total desde que se leyó.
 
-**Para probar localmente:**
-- copia `.env.example` como `.env.local`;
-- completa las variables `VITE_FIREBASE_*`;
-- ejecuta `npm run build` y luego `npm start`.
+El formulario usa nombres, no correos personales: internamente crea `nombre@auth.grid.mx`. Las cuentas del modo local son independientes y no se trasladan automáticamente a Firebase.
 
-**En Vercel:**
-- **Settings → Environment Variables**: agrega las mismas cuatro variables (`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID` y `VITE_FIREBASE_APP_ID`) para Production y Preview;
-- vuelve a desplegar. Las variables se leen al compilar.
+## Sin conexión y sincronización
 
-**En Firebase:**
-- **Authentication → Configuración → Dominios autorizados**: agrega `auditor-inventario-eleventa.vercel.app`.
+- Primero abre la auditoría con internet para descargar su catálogo.
+- Sin señal puedes **sumar piezas**. Firebase guarda las escrituras pendientes en ese navegador y las envía al reconectar.
+- **Todo sincronizado** solo aparece después de recibir confirmación del servidor y sin escrituras pendientes. Al reabrir la auditoría se consultan también los pendientes de la caché persistente.
+- Corregir totales, deshacer, vincular productos, asignar departamentos, importar y administrar accesos requieren conexión.
+- Antes de borrar datos del navegador o desinstalar la app, espera la confirmación. Las capturas locales pendientes se perderían al borrar esos datos.
+- Si el servidor rechaza una captura, revisa el aviso y verifica el total; no supongas que quedó guardada.
 
-## 5. Ensayo antes de la auditoría (al menos una semana antes)
+## Prueba antes de usarla en una tienda
 
-1. En cada teléfono, abre la app y, **en el iPhone**, instálala con Safari → Compartir → Añadir a pantalla de inicio. Entra siempre desde ese icono.
-2. Inicia sesión con tu cuenta, abre la auditoría de prueba y toma un departamento distinto en cada teléfono.
-3. Cuenta unos productos en cada teléfono y comprueba que el otro los ve sin recargar.
-4. Activa el **modo avión** en un teléfono, cuenta 5 productos y observa el indicador "Sin conexión · 5 por enviar". Desactiva el modo avión y espera a que diga "Todo sincronizado".
-5. Escanea un código que no esté en el catálogo desde los dos teléfonos: debe quedar **un solo** producto no encontrado con la suma de ambos.
-6. En **Balance → Verificación de integridad**, todos los totales deben coincidir con el historial.
+Abre la misma auditoría en dos dispositivos con cuentas distintas. Suma 2 piezas en uno y 3 en otro: ambos deben mostrar 5. Desconecta uno, agrega piezas, reconecta y verifica la suma. Reabre la auditoría y comprueba el estado de envío. Revisa **Balance → Verificación de integridad**.
 
-## Cómo funciona sin conexión
+La cámara en teléfonos necesita HTTPS. Usa el sitio publicado con HTTPS; una dirección de la PC por HTTP admite captura manual pero no garantiza acceso a la cámara.
 
-- **Contar sin señal está permitido.** Cada captura se guarda en el teléfono y se envía en orden cuando vuelve la conexión. El indicador muestra cuántas faltan por enviar.
-- **Requieren conexión:** tomar, soltar o completar departamentos; crear auditorías e importar catálogos; cambiar el estado de la auditoría; dar acceso a personas; y el **primer** inicio de sesión en un dispositivo.
-- **Antes de borrar datos del navegador** o desinstalar la app, espera a que el indicador diga "Todo sincronizado". Lo que no se haya enviado se pierde.
-- **Si cierras sesión con capturas pendientes,** quedan guardadas en ese teléfono y se envían cuando la misma cuenta vuelve a entrar ahí.
+## Verificación de desarrollo
 
-## Si algo sale mal
+- `npm test`: lógica local y estado de sincronización/enlaces.
+- `npm run build` y `npm run lint`: compilación y análisis.
+- `npm run test:cloud`: seguridad y dos clientes reales del SDK contra emuladores, sin tocar datos de producción. Requiere Java compatible con Firebase CLI en PATH. Cada prueba tiene un límite de 60 segundos; al terminar se cierran los procesos de prueba aunque el SDK conserve conexiones.
 
-| Situación | Qué hacer |
-|---|---|
-| "Tu cuenta aún no tiene acceso" | Un administrador agrega el UID que muestra la pantalla en **Personas con acceso** |
-| Se perdieron todos los administradores | En la consola de Firestore, edita `members/{uid}` y pon `role: admin` y `active: true` |
-| Un teléfono se perdió | **Personas con acceso → Quitar acceso** a esa persona, y en Authentication deshabilita la cuenta o cambia su contraseña |
-| La verificación de integridad muestra diferencias | No corrijas a mano: anota los códigos y revisa el historial de capturas en Firestore (`audits/{id}/captures`) |
-| Se rebasa la cuota diaria gratuita | Firestore rechaza escrituras hasta la medianoche del Pacífico; las capturas quedan en cola en el teléfono. Con el volumen previsto (≈8,500 escrituras/día de 20,000) no debería pasar |
-
-## Pruebas automatizadas
-
-- `npm test`: lógica (91 pruebas), sin red.
-- `npm run test:cloud`: reglas de seguridad y escenarios de dos personas contra los emuladores de Firebase (30 pruebas; requiere Java 11+).
-- `node tests/field-browser-server.mjs` y abrir `http://localhost:5191/__field.html`: flujos de interfaz en navegador (requiere `npm run build`).
+Estas pruebas no sustituyen comprobar cámaras físicas, instalación PWA ni uso real en iOS/Android.

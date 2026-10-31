@@ -7,10 +7,11 @@ import { selectWorkspaceUser } from './services/storageIndexedDB';
 import { AccountForm } from './components/AccountForm';
 import { InterfaceScale } from './components/InterfaceScale';
 import { transition } from './services/transition';
+import { sharedAuditId } from './services/cloud/teamState';
 const CloudApp = lazy(() => import('./components/cloud/CloudApp'));
 export function Root() {
   const available = Boolean(cloudConfig());
-  const [mode, setMode] = useState<'local' | 'cloud'>(() => available ? readMode() ?? 'cloud' : 'local');
+  const [mode, setMode] = useState<'local' | 'cloud'>(() => available ? (sharedAuditId(location.search) ? 'cloud' : readMode() ?? 'cloud') : 'local');
   const [username, setUsername] = useState<string | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
   useEffect(() => {
     let active = true;
@@ -23,6 +24,8 @@ export function Root() {
   if (loading) return <p role="status" className="message">Abriendo tu sesión…</p>;
   if (mode === 'cloud' && available) return <Suspense fallback={<p role="status" className="message">Cargando equipo…</p>}><CloudApp onUseLocal={() => choose('local')} /></Suspense>;
   if (!username) return <main className="auth-shell"><AccountForm onSubmit={async (name, password, register) => { const user = await localLogin(name, password, register); selectWorkspaceUser(user); transition(() => setUsername(user)); }}>
+    <p className="grid-login-note">Modo local: este dispositivo no comparte sus conteos con otros teléfonos o computadoras.</p>
+    {!available && <p className="grid-login-note">Para trabajar en equipo falta configurar Firebase en esta instalación.</p>}
     <p className="grid-login-note">Tu sesión está protegida con contraseña. Los datos se guardan en este dispositivo y están disponibles sin conexión.</p>{error && <p role="alert">{error}</p>}
     {available && <button className="secondary" onClick={() => choose('cloud')}>Entrar al equipo en la nube</button>}
   </AccountForm></main>;
