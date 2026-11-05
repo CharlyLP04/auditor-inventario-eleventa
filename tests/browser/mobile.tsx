@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createRoot } from 'react-dom/client';
+
 import { LayoutGrid, ScanBarcode, ClipboardList, ChartColumn } from 'lucide-react';
 import { InventoryTable } from '../../src/components/InventoryTable';
 import { InterfaceScale } from '../../src/components/InterfaceScale';
@@ -16,4 +16,4 @@ export function Review(){
  <InventoryTable products={products} viewKey="mobile-review" onUpdateQuantity={async(code,quantity)=>{setProducts(items=>items.map(p=>p.code===code?{...p,physicalStock:quantity,counted:true}:p));return true;}} />
  </div></main></div>;
 }
-createRoot(document.getElementById('root')!).render(<Review/>);
+
