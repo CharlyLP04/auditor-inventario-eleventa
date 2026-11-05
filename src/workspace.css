@@ -111,12 +111,15 @@
   .inventory-save svg { color: var(--app-success); }
   .inventory-columns, .inventory-row { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, .7fr) minmax(0, .9fr) minmax(0, .65fr) minmax(0, 1.1fr) minmax(8.5rem, 1fr); gap: .75rem; align-items: center; }
   .inventory-columns { padding: .7rem .9rem; background: var(--app-bg); font-size: .75rem; text-transform: none; letter-spacing: 0; border-bottom: 1px solid var(--app-border); }
-  .inventory-list { display: grid; gap: 0; border: 1px solid var(--app-border); border-radius: .6rem; overflow: clip; }
+  .inventory-workspace { min-width: 0; }
+  .inventory-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; border: 1px solid var(--app-border); border-radius: .6rem; overflow: clip; }
   .inventory-row { padding: .85rem .9rem; background: var(--app-surface); border: 0; border-bottom: 1px solid var(--app-border); border-radius: 0; box-shadow: none; animation: none; transform: none; transition: background-color 140ms ease; }
   .inventory-row:last-child { border-bottom: 0; }
   .inventory-row:hover { background: #161d25; box-shadow: none; transform: none; }
   .inventory-row > .product-info, .inventory-row > .status-cell, .inventory-row > .quantity-cell { grid-column: auto; min-width: 0; }
   .inventory-row.is-saving { box-shadow: inset 3px 0 var(--app-accent); }
+  .inventory-row > * { min-width: 0; overflow-wrap: anywhere; }
+  .product-info code, .product-info h3, .product-info > span { overflow-wrap: anywhere; }
   .inventory-row h3 { font-size: .875rem; font-weight: 600; line-height: 1.4; margin: .2rem 0; }
   .product-info code { font-weight: 400; font-size: .75rem; letter-spacing: 0; }
   .stock-cell, .price-cell, .cost-cell { font-size: .8125rem; font-variant-numeric: tabular-nums; }
@@ -214,7 +217,7 @@
   .clients-studio .clients-vault, .clients-studio .identity-editor, .clients-studio .company-detail { border-radius: .65rem; background: var(--app-surface); box-shadow: none; }
   .cloud-shell { display: block; }
   .cloud-shell > .app-main { border-left: 0; max-width: 90rem; margin: 0 auto; }
-  .cloud-nav.app-nav { position: static; display: flex; flex-direction: row; width: 100%; height: auto; margin: .75rem 0 1.25rem; padding: .35rem; gap: .3rem; border-radius: .375rem; border: 1px solid var(--app-border); background: var(--app-surface); box-shadow: none; transform: none; }
+  .cloud-nav.app-nav { position: static; max-width: none; display: flex; flex-direction: row; width: 100%; height: auto; margin: .75rem 0 1.25rem; padding: .35rem; gap: .3rem; border-radius: .375rem; border: 1px solid var(--app-border); background: var(--app-surface); box-shadow: none; transform: none; }
   .cloud-nav button { justify-content: center; }
   .cloud-mine { margin: .75rem 0; font-size: .8125rem; padding: .5rem .75rem; }
   .grid-login, .grid-login-card { box-shadow: none; border-radius: 1rem; }
@@ -259,7 +262,7 @@
   .account-toolbar { padding: .3rem 1rem; }.account-user-pill { font-size: .75rem; }
   .account-user-pill small { display: none; }.interface-scale .secondary { min-height: 2.75rem; min-width: 2.5rem; }
   .account-logout-btn.secondary { min-height: 2.75rem; font-size: .75rem; padding: .25rem .45rem; }
-  .app-shell > .app-nav, .cloud-nav.app-nav { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: 100%; margin: 0; padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(var(--nav-count, 5), minmax(0, 1fr)); gap: .15rem; background: #10161d; border: 0; border-top: 1px solid var(--app-border); border-radius: 0; transform: none; box-shadow: 0 -4px 12px #0002; z-index: 45; }
+  .app-shell > .app-nav, .cloud-nav.app-nav { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: 100%; max-width: none; margin: 0; padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(var(--nav-count, 5), minmax(0, 1fr)); gap: .15rem; background: #10161d; border: 0; border-top: 1px solid var(--app-border); border-radius: 0; transform: none; box-shadow: 0 -4px 12px #0002; z-index: 45; }
   .cloud-nav.app-nav { --nav-count: 4; }
   .app-nav button { display: flex; flex-direction: column; justify-content: center; gap: .2rem; min-height: 3.25rem; padding: .35rem .1rem; font-size: .75rem; line-height: 1.2; }
   .app-nav button svg { width: 20px; height: 20px; }
@@ -278,7 +281,12 @@
   .quantity-controls::before { content: 'Conteo físico'; display: block; grid-column: 1 / -1; color: var(--app-muted); font-size: .75rem; margin-bottom: .15rem; }
   .inventory-save { width: 100%; margin: 0; }.inventory-results { gap: .4rem; }
   .product-edit-button { min-height: 2.75rem; }
-  .inventory-row h3 { font-size: 1rem; }.stock-cell, .price-cell, .cost-cell { font-size: .8125rem; }
+  .inventory-row h3 { font-size: 1rem; }
+  .stock-cell, .price-cell, .cost-cell { font-size: .875rem; }
+  .product-info > span, .stock-cell small, .price-cell small { font-size: .8125rem; }
+  .quantity-value { font-size: 1.125rem !important; }
+  .inventory-workspace { scroll-margin-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+  .quantity-editor { scroll-margin-bottom: calc(6rem + env(safe-area-inset-bottom)); }
   .audit-ribbon { padding: .75rem; gap: .5rem; }
   .audit-ribbon-heading { flex-basis: calc(100% - 8rem); }
   .audit-finish-trigger { flex: 1; justify-content: center; }
