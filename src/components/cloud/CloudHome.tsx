@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../LoadingSkeleton';
 import { AccessEditor } from './AccessEditor';
 import { useEffect, useRef, useState } from 'react';
 import type { Firestore, QueryDocumentSnapshot } from 'firebase/firestore';
@@ -15,7 +16,7 @@ const month = () => { const now = new Date(); return `${now.getFullYear()}-${Str
 
 export function CloudHome({ db, user, workspace, online, onOpen }: {
   db: Firestore; user: CloudUser; online: boolean; onOpen: (auditId: string) => void;
-  workspace: { companies: CloudCompany[]; audits: CloudAudit[]; members: CloudMember[] };
+  workspace: { companies: CloudCompany[]; audits: CloudAudit[]; members: CloudMember[]; loading: boolean };
 }) {
   const { companies, audits, members } = workspace;
   const isAdmin = user.role === 'admin';
@@ -25,7 +26,8 @@ export function CloudHome({ db, user, workspace, online, onOpen }: {
   return <div className="cloud-home">
     <section aria-labelledby="open-audits">
       <div className="page-heading"><div><p className="eyebrow">AUDITORÍAS EN EQUIPO</p><h2 id="open-audits">Elige la auditoría</h2></div></div>
-      {!open.length && <p className="message">{isAdmin ? 'No hay auditorías abiertas. Crea una abajo con el catálogo de eleventa.' : 'No hay auditorías abiertas. Un administrador debe crearla.'}</p>}
+      {!workspace.loading && !open.length && <p className="message">{isAdmin ? 'No hay auditorías abiertas. Crea una abajo con el catálogo de eleventa.' : 'No hay auditorías abiertas. Un administrador debe crearla.'}</p>}
+      {workspace.loading && <LoadingSkeleton label="Buscando tus auditorías…" compact />}
       <div className="cloud-audit-list">{open.map(a => <AuditCard key={a.id} audit={a} company={companyName(a.companyId)} onOpen={() => onOpen(a.id)} />)}</div>
       <AuditHistory key={JSON.stringify(user)} db={db} user={user} companyName={companyName} onOpen={onOpen} />
     </section>
@@ -140,7 +142,7 @@ function AuditHistory({ db, user, companyName, onOpen }: { db: Firestore; user: 
   return <details className="cloud-history" onToggle={event => { if (event.currentTarget.open && !loaded && !error) void load(); }}>
     <summary>Historial de auditorías</summary>
     <div className="cloud-audit-list">{audits.map(a => <AuditCard key={a.id} audit={a} company={companyName(a.companyId)} onOpen={() => onOpen(a.id)} />)}</div>
-    {busy && <p role="status">Cargando historial…</p>}
+    {busy && <LoadingSkeleton label="Cargando historial…" compact />}
     {error && <p role="alert">{error}</p>}
     {loaded && !audits.length && <p>No hay auditorías terminadas.</p>}
     {more && !busy && (loaded || error) && <button className="secondary" onClick={() => void load()}>{error ? 'Reintentar' : 'Cargar más'}</button>}

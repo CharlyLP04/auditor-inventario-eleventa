@@ -1,5 +1,5 @@
 import { registerDevice, deviceKey } from '../services/cloud/closing';
-import { scopedAudits, scopedCompanies } from '../services/cloud/access';
+import { scopedAudits, scopedCompanies, unrestricted } from '../services/cloud/access';
 import type { AccessScope } from '../services/cloud/access';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { collection, doc, onSnapshot, where } from 'firebase/firestore';
@@ -33,6 +33,7 @@ export function useOnline() {
 export function useCloudWorkspace(db: Firestore, user: CloudUser, showAuditList = true) {
   const [companies, setCompanies] = useState<CloudCompany[]>([]);
   const [audits, setAudits] = useState<CloudAudit[]>([]);
+  const [auditsLoaded, setAuditsLoaded] = useState(false);
   const [members, setMembers] = useState<CloudMember[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -49,10 +50,11 @@ export function useCloudWorkspace(db: Firestore, user: CloudUser, showAuditList 
     const source = scopedAudits(db, user, where('status', '==', 'in_progress'));
     if (!source) return;
     return onSnapshot(source,
-      snapshot => setAudits(snapshot.docs.map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))),
+      snapshot => { setAudits(snapshot.docs.map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))); setAuditsLoaded(true); },
       error => setError(authMessage(error)));
   }, [db, user, showAuditList]);
-  return { companies, audits, members, error };
+  const loading = !error && showAuditList && !auditsLoaded && (unrestricted(user) || Boolean(user.companyIds?.length || user.auditIds?.length));
+  return { companies, audits, members, error, loading };
 }
 
 interface LastCapture { captureId: string; code: string; delta: number; department?: string; }

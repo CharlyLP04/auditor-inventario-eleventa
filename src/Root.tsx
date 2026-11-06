@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import App from './App';
 import { BrandLogo } from './components/BrandLogo';
@@ -21,8 +22,8 @@ export function Root() {
     return () => { active = false; window.removeEventListener('storage', changed); };
   }, []);
   const choose = (next: 'local' | 'cloud') => { saveMode(next); if (next === 'local' && username) selectWorkspaceUser(username); transition(() => setMode(next)); };
-  if (loading) return <p role="status" className="message">Abriendo tu sesión…</p>;
-  if (mode === 'cloud' && available) return <Suspense fallback={<p role="status" className="message">Cargando equipo…</p>}><CloudApp onUseLocal={() => choose('local')} /></Suspense>;
+  if (loading) return <main className="app-main"><LoadingSkeleton label="Abriendo tu sesión…" compact /></main>;
+  if (mode === 'cloud' && available) return <Suspense fallback={<main className="app-main"><LoadingSkeleton label="Cargando equipo…" /></main>}><CloudApp onUseLocal={() => choose('local')} /></Suspense>;
   if (!username) return <main className="auth-shell"><AccountForm onSubmit={async (name, password, register) => { const user = await localLogin(name, password, register); selectWorkspaceUser(user); transition(() => setUsername(user)); }}>
     <p className="grid-login-note">Modo local: este dispositivo no comparte sus conteos con otros teléfonos o computadoras.</p>
     {!available && <p className="grid-login-note">Para trabajar en equipo falta configurar Firebase en esta instalación.</p>}

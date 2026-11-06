@@ -649,3 +649,53 @@
 .cloud-members > li > details { width:100%; }
 .closing-panel button { margin:4px; }
 .account-recovery { margin-bottom:12px; }
+
+/* Feedback de trabajo: superficie estable, movimiento breve y solo cuando aporta estado. */
+.cloud-tab-content { min-width:0; display:grid; gap:14px; }
+.loading-skeleton { width:100%; min-width:0; padding:16px 0; }
+.loading-caption { display:flex; align-items:center; gap:10px; margin:0 0 18px; color:var(--app-muted); font-size:.875rem; }
+.loading-indicator { width:8px; height:8px; border-radius:50%; background:var(--app-accent); flex:none; }
+.skeleton-content { display:grid; gap:12px; }
+.skeleton-toolbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:8px; }
+.skeleton-row { min-height:122px; display:grid; grid-template-columns:minmax(0,1fr) 90px; align-items:center; gap:20px; padding:20px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface); }
+.skeleton-row > div { min-width:0; display:grid; gap:12px; }
+.skeleton-line, .skeleton-control { display:block; overflow:hidden; position:relative; background:#24313c; border-radius:4px; }
+.skeleton-line { height:12px; }
+.skeleton-title { width:45%; height:22px; }
+.skeleton-code { width:30%; }
+.skeleton-name { width:75%; height:17px; }
+.skeleton-detail { width:45%; }
+.skeleton-control { width:90px; height:44px; }
+.loading-skeleton-compact .skeleton-row { min-height:96px; padding:16px; }
+.inventory-row.is-saving .quantity-cell { opacity:.65; }
+.inventory-row.is-updated .quantity-value { border-color:var(--app-accent); }
+.inventory-save { min-height:24px; }
+.cloud-nav button { position:relative; }
+.cloud-nav button[aria-current='page']::after { content:''; position:absolute; left:25%; right:25%; bottom:3px; height:2px; background:var(--app-accent); border-radius:2px; }
+.cloud-audit-card:focus-visible, .cloud-nav button:focus-visible, .filter-bar button:focus-visible { outline:2px solid var(--app-accent); outline-offset:3px; }
+.account-recovery > summary, .cloud-history > summary, .cloud-members summary { cursor:pointer; min-height:44px; align-content:center; }
+@media screen and (prefers-reduced-motion:no-preference) {
+  .cloud-tab-content { animation:workspace-reveal 150ms ease-out; }
+  .sync-synced svg { animation:sync-confirmed 240ms ease-out; }
+  .sync-syncing svg { animation:sync-working 1.2s ease-in-out 3; }
+  .cloud-nav button[aria-current='page']::after { animation:nav-selected 180ms ease-out; }
+  .skeleton-line::after, .skeleton-control::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,#ffffff0d,transparent); transform:translateX(-100%); animation:skeleton-sweep 1.4s ease-in-out 3; }
+  .quantity-cell { transition:opacity 120ms ease-out; }
+  @supports (interpolate-size:allow-keywords) {
+    .account-recovery, .cloud-history, .cloud-members details { interpolate-size:allow-keywords; }
+    .account-recovery::details-content, .cloud-history::details-content, .cloud-members details::details-content { block-size:0; opacity:0; overflow:clip; transition:block-size 180ms ease, opacity 140ms ease, content-visibility 180ms allow-discrete; }
+    .account-recovery[open]::details-content, .cloud-history[open]::details-content, .cloud-members details[open]::details-content { block-size:auto; opacity:1; }
+  }
+}
+@keyframes workspace-reveal { from { opacity:.65; } to { opacity:1; } }
+@keyframes skeleton-sweep { to { transform:translateX(100%); } }
+@keyframes nav-selected { from { transform:scaleX(.4); opacity:.4; } to { transform:scaleX(1); opacity:1; } }
+@keyframes sync-confirmed { from { transform:scale(.8); opacity:.4; } to { transform:scale(1); opacity:1; } }
+@keyframes sync-working { 50% { opacity:.4; } }
+@media screen and (max-width:480px) {
+  .skeleton-row { grid-template-columns:minmax(0,1fr) 64px; gap:12px; padding:16px; }
+  .skeleton-control { width:64px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .cloud-tab-content, .sync-badge svg, .inventory-row.is-updated, .cloud-nav button::after, .skeleton-line::after, .skeleton-control::after { animation:none !important; }
+}

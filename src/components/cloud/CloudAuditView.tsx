@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../LoadingSkeleton';
 import { BackupPanel } from './BackupPanel';
 import { ClosingPanel } from './ClosingPanel';
 import { useViewPreference, useViewScroll } from '../../hooks/useViewPreference';
@@ -60,8 +61,8 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   const visibleMembers = [...members, ...store.departments.filter(d => d.assignee && !members.some(m => m.uid === d.assignee)).map(d => ({ uid: d.assignee!, name: d.assigneeName ?? 'Compañero', role: 'auditor' as const, active: true }))];
   const mine = store.departments.filter(d => d.assignee === user.uid);
 
-  if (store.loading && audit) return <div><p role="status" className="message">Cargando catálogo y conteos completos…</p>{store.error && <p role="alert">{store.error}</p>}<button className="secondary" onClick={onBack}>Volver a auditorías</button></div>;
-  if (!audit) return <div><p role="status" className="message">{store.error || (store.loading ? 'Abriendo auditoría…' : 'Esta auditoría no existe. Vuelve a la lista o pide un enlace actualizado.')}</p><button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Volver</button></div>;
+  if (store.loading && audit) return <div><LoadingSkeleton label="Cargando catálogo y conteos completos…" />{store.error && <p role="alert">{store.error}</p>}<button className="secondary" onClick={onBack}>Volver a auditorías</button></div>;
+  if (!audit) return <div>{store.loading && !store.error ? <LoadingSkeleton label="Abriendo auditoría…" /> : <p role="status" className="message">{store.error || 'Esta auditoría no existe. Vuelve a la lista o pide un enlace actualizado.'}</p>}<button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Volver</button></div>;
   const record: AuditRecord = { id: audit.id, companyId: audit.companyId, title: audit.title, period: audit.period, status: audit.status, createdAt: audit.createdAt ?? '', completedAt: audit.completedAt ?? undefined, products, stats, notes: audit.notes };
   const companyRecord: Company | undefined = company ? { id: company.id, name: company.name, contactName: company.contactName, phone: company.phone, address: company.address, notes: company.notes, createdAt: '' } : undefined;
 
@@ -113,11 +114,12 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
       {tabs.map(({ id, title, label, icon: Icon }) => <button key={id} aria-label={label} onClick={() => transition(() => setTab(id))} aria-current={tab === id ? 'page' : undefined}><Icon size={22} solid={tab === id} /><span>{title}</span></button>)}
     </nav>
 
+    <div key={tab} className="cloud-tab-content">
     {tab === 'departments' && <DepartmentBoard store={store} user={user} members={members} online={online} products={products} readOnly={readOnly} />}
     {tab === 'scanner' && (readOnly
       ? <p className="message">{audit.status === 'in_progress' ? 'Conteo pausado: revisa la comprobación de dispositivos.' : 'Auditoría finalizada. Un administrador puede reabrirla.'}</p>
       : <div className="count-layout">
-        <Suspense fallback={<p role="status">Abriendo escáner…</p>}><BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={prefs} onPreferencesChange={savePrefs} canUndo={store.canUndo}
+        <Suspense fallback={<LoadingSkeleton label="Preparando el escáner…" compact />}><BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={prefs} onPreferencesChange={savePrefs} canUndo={store.canUndo}
           onUndo={async () => { const done = await store.undo(); if (done) setLastScannedInfo(null); return done; }}
           onRegisterUnregistered={async input => { const saved = store.register(input); setLastScannedInfo({ code: saved.code, description: saved.description, quantity: saved.physicalStock, theoretical: 0, isNew: true }); return saved; }}
           onRestoreUnregistered={async code => store.restoreUnregistered(code)} /></Suspense>
@@ -136,7 +138,8 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
       <DepartmentSummary products={products} />
       <AuditSummary stats={stats} products={products} />
     </>}
-    {exporting && isAdmin && <Suspense fallback={<p role="status" className="message">Cargando dictamen…</p>}>
+    </div>
+    {exporting && isAdmin && <Suspense fallback={<LoadingSkeleton label="Preparando el dictamen…" compact />}>
       <ExportModal isOpen onClose={() => setExporting(false)} products={products} stats={stats} company={companyRecord} audit={record} profile={profile} />
     </Suspense>}
   </div>;
@@ -144,7 +147,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
 
 function SyncBadge({ online, pending, synced, error }: { online: boolean; pending: number; synced: boolean; error: boolean }) {
   const state = !online || error ? 'offline' : !synced || pending ? 'syncing' : 'synced';
-  return <span className={`sync-badge sync-${state}`} role="status" aria-live="polite">
+  return <span key={state} className={`sync-badge sync-${state}`} role="status" aria-live="polite">
     {state === 'offline' ? <CloudOff size={16} aria-hidden="true" /> : state === 'syncing' ? <CloudUpload size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
     {error ? 'Revisa el aviso de sincronización' : !online ? `Sin conexión${pending ? ' · cambios por enviar' : ''}` : pending ? 'Enviando cambios…' : !synced ? 'Esperando confirmación del servidor…' : 'Todo sincronizado'}
   </span>;

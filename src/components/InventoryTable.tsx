@@ -167,7 +167,7 @@ export function InventoryTable({
       <div className="inventory-results">
         <p role="status" className="result-count">{deferredSearch !== search ? 'Buscando…' : `${filtered.length.toLocaleString('es-MX')} productos · Página ${currentPage + 1} de ${totalPages}`}</p>
         {(search || department || filter !== 'all' || differencesOnly) && <button className="text-button" onClick={clearFilters}><X size={14} aria-hidden="true" /> Limpiar filtros</button>}
-        <span className="inventory-save" role="status">{savingCode ? 'Guardando conteo…' : savedCode ? <><Check size={14} aria-hidden="true" /> {savedCode} guardado</> : 'Toca una cantidad para corregirla'}</span>
+        <span className="inventory-save" role="status" aria-live="polite" aria-atomic="true">{savingCode ? 'Guardando conteo…' : savedCode ? <><Check size={14} aria-hidden="true" /> {savedCode} guardado</> : 'Toca una cantidad para corregirla'}</span>
       </div>
       {error && <p role="alert" className="message warning">{error}</p>}
 
@@ -191,6 +191,7 @@ export function InventoryTable({
               key={p.code}
               className={`inventory-row status-${state}${savingCode === p.code ? ' is-saving' : ''}${savedCode === p.code ? ' is-updated' : ''}`}
               aria-label={p.description}
+              aria-busy={savingCode === p.code}
             >
               <div className="product-info">
                 <code>{p.code}</code>

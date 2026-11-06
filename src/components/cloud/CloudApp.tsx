@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../LoadingSkeleton';
 import { AccountRecovery } from './AccountRecovery';
 import { useState } from 'react';
 import { LogOut, HardDrive, Users } from 'lucide-react';
@@ -38,7 +39,7 @@ export default function CloudApp({ onUseLocal }: { onUseLocal: () => void }) {
       </div>
     </header>
     <main id="contenido" className="app-main" tabIndex={-1}>
-      {session.status === 'loading' && <p role="status" className="message">Abriendo tu sesión…</p>}
+      {session.status === 'loading' && <LoadingSkeleton label="Abriendo tu sesión…" compact />}
       {session.status === 'signedOut' && <AccountForm shared onSubmit={async (name, password, register) => { try { await (register ? signUp(name, password) : signIn(name, password)); } catch (e) { throw new Error(authMessage(e)); } }}><p>La primera cuenta administra el equipo. Las siguientes solicitan acceso y un administrador las activa por nombre.</p></AccountForm>}
       {session.status === 'signedOut' && <AccountRecovery />}
       {session.status === 'ready' && <AccountRecovery signedIn />}
