@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict';
+import { collection, getDocs, where } from 'firebase/firestore';
+import { scopedAudits, scopedCompanies } from '../src/services/cloud/access.ts';
 // Pruebas de firestore.rules contra el emulador. Ejecutar con: npm run test:cloud
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -92,4 +95,56 @@ test('un no encontrado acepta la etiqueta de cada persona, pero nadie cambia la 
 test('un auditor no puede modificar el catálogo', async () => {
   await assertFails(setDoc(doc(db('aud1'), 'audits/A1/catalog/0'), { products: [] }));
   await assertSucceeds(setDoc(doc(db('admin1'), 'audits/A1/catalog/0'), { products: [] }));
+});
+
+test('alcance: empresa y auditoría aisladas, consultas reales y subcolecciones protegidas', async () => {
+  await env.withSecurityRulesDisabled(async c => {
+    await setDoc(doc(c.firestore(), 'members/aud1'), { name:'Limitado', role:'auditor', active:true, allAccess:false, companyIds:[], auditIds:['A1'], visibleCompanyIds:['C1'] });
+    await setDoc(doc(c.firestore(), 'companies/C1'), {name:'Permitida'});
+    await setDoc(doc(c.firestore(), 'companies/C2'), {name:'Privada'});
+    await setDoc(doc(c.firestore(), 'audits/A3'), {companyId:'C2',status:'in_progress'});
+  });
+  const fs = db('aud1'), user = { role:'auditor', allAccess:false, companyIds:[], auditIds:['A1'], visibleCompanyIds:['C1'] };
+  await assertSucceeds(getDoc(doc(fs, 'audits/A1')));
+  await assertFails(getDoc(doc(fs, 'audits/A2')));
+  await assertFails(getDoc(doc(fs, 'audits/A3')));
+  await assertFails(getDocs(collection(fs, 'audits')));
+  assert.deepEqual((await assertSucceeds(getDocs(scopedAudits(fs,user,where('status','==','in_progress'))))).docs.map(d=>d.id), ['A1']);
+  assert.deepEqual((await assertSucceeds(getDocs(scopedCompanies(fs,user)))).docs.map(d=>d.id), ['C1']);
+  await assertFails(getDoc(doc(fs,'companies/C2')));
+  for (const path of ['catalog/0','counts/b0','captures/test','departments/test','unregistered/test','events/test']) await assertFails(getDoc(doc(fs,'audits/A2/'+path)));
+  await assertFails(setDoc(doc(fs,'audits/A3/captures/hack'),captureData('aud1')));
+  await assertFails(getDoc(doc(fs, 'members/aud2')));
+  await assertFails(updateDoc(doc(fs,'members/aud1'),{allAccess:true, updatedBy:'aud1',updatedAt:serverTimestamp()}));
+  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'members/aud1'),{companyIds:['C1'],auditIds:[]}));
+  const history = await assertSucceeds(getDocs(scopedAudits(fs,{...user,companyIds:['C1'],auditIds:[]},where('status','in',['completed','closed']))));
+  assert.deepEqual(history.docs.map(d=>d.id),['A2']);
+});
+test('dispositivos: no se suplanta a otra persona ni se cierra sin todas las confirmaciones', async () => {
+  const admin = db('admin1'), a = db('aud1'), b = db('aud2'), path = 'audits/A1';
+  await assertSucceeds(updateDoc(doc(a,path),{deviceOwners:{d1:'aud1'},lastDevice:'d1'}));
+  await assertFails(updateDoc(doc(b,path),{deviceOwners:{d1:'aud2'},lastDevice:'d1'}));
+  await assertSucceeds(updateDoc(doc(b,path),{deviceOwners:{d1:'aud1',d2:'aud2'},lastDevice:'d2'}));
+  await assertFails(updateDoc(doc(admin,path),{status:'completed'}));
+  await assertSucceeds(updateDoc(doc(admin,path),{closingToken:'round-1',deviceConfirmations:{}}));
+  await assertFails(updateDoc(doc(a,path),{deviceConfirmations:{d2:true},lastDevice:'d2'}));
+  await assertFails(updateDoc(doc(admin,path),{deviceConfirmations:{d1:true,d2:true}}));
+  await assertSucceeds(updateDoc(doc(a,path),{deviceConfirmations:{d1:true},lastDevice:'d1'}));
+  await assertFails(setDoc(doc(a,path+'/captures/after-confirm'),captureData('aud1',{deviceId:'d1'})));
+  await assertFails(setDoc(doc(a,path+'/captures/fake-device'),captureData('aud1',{deviceId:'unknown'})));
+  await assertFails(updateDoc(doc(admin,path),{status:'closed'}));
+  await assertSucceeds(setDoc(doc(b,path+'/captures/draining'),captureData('aud2',{deviceId:'d2'})));
+  await assertSucceeds(updateDoc(doc(b,path),{deviceConfirmations:{d1:true,d2:true},lastDevice:'d2'}));
+  await assertSucceeds(updateDoc(doc(admin,path),{status:'closed'}));
+  await assertFails(updateDoc(doc(b,path),{deviceOwners:{d1:'aud1',d2:'aud2',d3:'aud2'},lastDevice:'d3'}));
+});
+
+test('validación de alcances: rechaza IDs inválidos, listas grandes y autoasignación durante registro', async()=>{
+  const admin=db('admin1'), base={name:'Test',role:'auditor',active:true,updatedBy:'admin1',updatedAt:serverTimestamp()};
+  await assertFails(setDoc(doc(admin,'members/bad-list'),{...base,allAccess:false,companyIds:[123]}));
+  await assertFails(setDoc(doc(admin,'members/bad-path'),{...base,allAccess:false,auditIds:['A1/private']}));
+  await assertFails(setDoc(doc(admin,'members/too-many'),{...base,companyIds:Array.from({length:11},(_,i)=>'C'+i)}));
+  const own=env.authenticatedContext('self',{email:'self@auth.grid.mx'}).firestore();
+  await assertFails(setDoc(doc(own,'members/self'),{name:'self',email:'self@auth.grid.mx',role:'auditor',active:false,allAccess:false,companyIds:['C1'],updatedBy:'self',updatedAt:serverTimestamp()}));
+  await assertSucceeds(setDoc(doc(own,'members/self'),{name:'self',email:'self@auth.grid.mx',role:'auditor',active:false,allAccess:false,companyIds:[],auditIds:[],visibleCompanyIds:[],updatedBy:'self',updatedAt:serverTimestamp()}));
 });

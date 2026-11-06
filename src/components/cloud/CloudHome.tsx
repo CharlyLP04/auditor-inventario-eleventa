@@ -1,3 +1,4 @@
+import { AccessEditor } from './AccessEditor';
 import { useEffect, useRef, useState } from 'react';
 import type { Firestore, QueryDocumentSnapshot } from 'firebase/firestore';
 import { ArrowUpRight, Plus, UploadCloud, UserPlus } from 'lucide-react';
@@ -26,11 +27,11 @@ export function CloudHome({ db, user, workspace, online, onOpen }: {
       <div className="page-heading"><div><p className="eyebrow">AUDITORÍAS EN EQUIPO</p><h2 id="open-audits">Elige la auditoría</h2></div></div>
       {!open.length && <p className="message">{isAdmin ? 'No hay auditorías abiertas. Crea una abajo con el catálogo de eleventa.' : 'No hay auditorías abiertas. Un administrador debe crearla.'}</p>}
       <div className="cloud-audit-list">{open.map(a => <AuditCard key={a.id} audit={a} company={companyName(a.companyId)} onOpen={() => onOpen(a.id)} />)}</div>
-      <AuditHistory db={db} companyName={companyName} onOpen={onOpen} />
+      <AuditHistory key={JSON.stringify(user)} db={db} user={user} companyName={companyName} onOpen={onOpen} />
     </section>
     {isAdmin && <NewAudit db={db} user={user} companies={companies} online={online} onCreated={onOpen} />}
     {isAdmin && <UploadLocal db={db} user={user} companies={companies} online={online} onCreated={onOpen} />}
-    {isAdmin && <Members db={db} user={user} members={members} online={online} />}
+    {isAdmin && <Members db={db} user={user} companies={companies} members={members} online={online} />}
   </div>;
 }
 
@@ -104,7 +105,7 @@ function UploadLocal({ db, user, companies, online, onCreated }: { db: Firestore
   </section>;
 }
 
-function Members({ db, user, members, online }: { db: Firestore; user: CloudUser; members: CloudMember[]; online: boolean }) {
+function Members({ db, user, members, companies, online }: { db: Firestore; user: CloudUser; members: CloudMember[]; companies: CloudCompany[]; online: boolean }) {
   const [message, setMessage] = useState('');
   const save = async (target: string, data: Omit<CloudMember, 'uid'>) => {
     try { await saveMember(db, user, target, data); setMessage('Acceso actualizado.'); return true; } catch (e) { setMessage(authMessage(e)); return false; }
@@ -113,14 +114,15 @@ function Members({ db, user, members, online }: { db: Firestore; user: CloudUser
     <h3 id="members-title"><UserPlus size={18} aria-hidden="true" /> Personas con acceso</h3>
     <ul className="cloud-members">{members.map(m => <li key={m.uid}>
       <span><strong>{m.name}</strong><small>{m.name} · {m.role === 'admin' ? 'Administrador' : 'Auditor'} · {m.active ? 'Activo' : 'Sin acceso'}</small></span>
-      {m.uid !== user.uid && <button className="secondary" disabled={!online} onClick={() => { void save(m.uid, { name: m.name, email: m.email, role: m.role, active: !m.active }); }}>{m.active ? 'Quitar acceso' : 'Dar acceso'}</button>}
+      {m.uid !== user.uid && <button className="secondary" disabled={!online} onClick={() => { void save(m.uid, { ...m, active: !m.active }); }}>{m.active ? 'Quitar acceso' : 'Dar acceso'}</button>}
+      {m.uid !== user.uid && m.role !== 'admin' && <AccessEditor db={db} member={m} companies={companies} online={online} onSave={data => save(m.uid, { ...m, ...data })} />}
     </li>)}</ul>
-    <p>Los compañeros crean su cuenta con nombre y contraseña. Activa su solicitud aquí para incorporarlos al equipo.</p>
+    <p>Los compañeros crean su cuenta con nombre y contraseña. Activa su solicitud y elige las empresas o auditorías que podrá abrir. Las cuentas existentes conservan sus permisos hasta que los cambies.</p>
     {message && <p role="status" className="message">{message}</p>}
   </section>;
 }
 
-function AuditHistory({ db, companyName, onOpen }: { db: Firestore; companyName: (id: string) => string; onOpen: (id: string) => void }) {
+function AuditHistory({ db, user, companyName, onOpen }: { db: Firestore; user: CloudUser; companyName: (id: string) => string; onOpen: (id: string) => void }) {
   const [audits, setAudits] = useState<CloudAudit[]>([]);
   const [loaded, setLoaded] = useState(false), [busy, setBusy] = useState(false), [more, setMore] = useState(true), [error, setError] = useState('');
   const cursor = useRef<QueryDocumentSnapshot | undefined>(undefined);
@@ -129,7 +131,7 @@ function AuditHistory({ db, companyName, onOpen }: { db: Firestore; companyName:
     if (fetching.current || !more) return;
     fetching.current = true; setBusy(true); setError('');
     try {
-      const page = await readAuditHistory(db, cursor.current);
+      const page = await readAuditHistory(db, cursor.current, user);
       setAudits(previous => [...new Map([...previous, ...page.audits].map(a => [a.id, a])).values()]);
       cursor.current = page.cursor; setMore(page.hasMore); setLoaded(true);
     } catch (e) { setError(authMessage(e)); }

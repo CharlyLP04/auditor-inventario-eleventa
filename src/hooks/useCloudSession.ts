@@ -41,7 +41,7 @@ export function useCloudSession() {
         const data = snapshot.data();
         if (!snapshot.exists() || !data) setSession({ status: 'noAccess', uid: account.uid, email, reason: 'missing' });
         else if (data.active !== true) setSession({ status: 'noAccess', uid: account.uid, email, reason: 'inactive' });
-        else transition(() => setSession({ status: 'ready', email, user: { uid: account.uid, name: String(data.name ?? email), role: data.role === 'admin' ? 'admin' : 'auditor' } }));
+        else transition(() => setSession({ status: 'ready', email, user: { uid: account.uid, name: String(data.name ?? email), role: data.role === 'admin' ? 'admin' : 'auditor', allAccess: data.allAccess !== false, companyIds: data.companyIds ?? [], auditIds: data.auditIds ?? [], visibleCompanyIds: data.visibleCompanyIds ?? [] } }));
       }, () => setSession({ status: 'noAccess', uid: account.uid, email, reason: 'error' }));
     });
     return () => { stopMember?.(); stopAuth(); };
@@ -52,14 +52,15 @@ export function useCloudSession() {
       const member = doc(db, 'members', uid), bootstrap = doc(db, 'bootstrap', 'team');
       const [existing, team] = await Promise.all([tx.get(member), tx.get(bootstrap)]);
       if (existing.exists()) return;
+      if (username.includes('@')) throw new Error('La cuenta no tiene una membresía. Contacta al administrador.');
       const first = !team.exists();
       if (first) tx.set(bootstrap, { owner: uid });
-      tx.set(member, { name: username, email: `${username}@auth.grid.mx`, role: first ? 'admin' : 'auditor', active: first, updatedBy: uid, updatedAt: serverTimestamp() });
+      tx.set(member, { name: username, email: `${username}@auth.grid.mx`, role: first ? 'admin' : 'auditor', active: first, allAccess: first, companyIds: [], auditIds: [], visibleCompanyIds: [], updatedBy: uid, updatedAt: serverTimestamp() });
     });
   };
   const signIn = async (name: string, password: string) => {
-    const username = normalizeUsername(name);
-    const account = await signInWithEmailAndPassword(getCloud().auth, `${username}@auth.grid.mx`, password);
+    const username = name.includes('@') ? name.trim().toLowerCase() : normalizeUsername(name);
+    const account = await signInWithEmailAndPassword(getCloud().auth, username.includes('@') ? username : `${username}@auth.grid.mx`, password);
     try { await ensureMember(account.user.uid, username); } catch (error) { await firebaseSignOut(getCloud().auth); throw error; }
   };
   const signUp = async (name: string, password: string) => {

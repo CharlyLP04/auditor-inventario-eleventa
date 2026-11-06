@@ -1,4 +1,7 @@
-import { doc, collection, getDoc, getDocs, getDocsFromServer, query, where, limit, startAfter, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
+import { deviceKey, allDevicesConfirmed } from './closing';
+import type { AccessScope } from './access';
+import { scopedAudits } from './access';
+import { doc, collection, getDoc, getDocs, getDocsFromServer, where, limit, startAfter, runTransaction, writeBatch, serverTimestamp, increment, FieldPath, setDoc, Timestamp } from 'firebase/firestore';
 import type { Firestore, DocumentData, DocumentReference, WriteBatch, Transaction, QueryDocumentSnapshot } from 'firebase/firestore';
 import type { Product, CountMode, ImportReport } from '../../types';
 import { isCounted, roundQuantity, validQuantity } from '../auditState';
@@ -6,12 +9,13 @@ import { BUCKETS, bucketOf, codeKey, departmentKey, splitCatalog, planCapture, v
 import type { BucketData, UnregisteredDoc } from './model';
 
 /** Operaciones de la auditoría compartida en Firestore. Las reglas (firestore.rules) validan cada escritura. */
-export interface CloudUser { uid: string; name: string; role: 'admin' | 'auditor'; }
+export interface CloudUser extends AccessScope { uid: string; name: string; role: 'admin' | 'auditor'; }
 export type DepartmentStatus = 'pending' | 'in_progress' | 'done';
 export interface CloudDepartment { key: string; name: string; assignee: string | null; assigneeName: string | null; status: DepartmentStatus; }
 export type AuditStatus = 'in_progress' | 'completed' | 'closed';
 export interface CloudAudit {
   id: string; companyId: string; period: string; title: string; status: AuditStatus; notes?: string; createdAt?: string; completedAt?: string | null;
+  deviceOwners?: Record<string, string>; deviceConfirmations?: Record<string, boolean>; closingToken?: string | null;
   catalog?: { chunks: number; products: number; importedAt: string; importedBy: string; fileName?: string; report?: ImportReport };
 }
 export interface CloudCompany { id: string; name: string; contactName?: string; phone?: string; address?: string; notes?: string; }
@@ -108,7 +112,7 @@ function addCapture(batch: CaptureWriter, db: Firestore, user: CloudUser, auditI
   batch.set(capture, {
     ...clean({
       code: input.code, delta: input.delta, mode: input.mode, observed: input.observed, by: user.uid, byName: user.name,
-      clientAt: new Date().toISOString(), device: device(), department: input.department ?? '',
+      clientAt: new Date().toISOString(), device: device(), deviceId: deviceKey(user.uid), department: input.department ?? '',
       ...(input.voids ? { voids: input.voids } : {}), ...(input.outsideAssignment ? { outsideAssignment: true } : {}),
     }),
     at: serverTimestamp(),
@@ -248,10 +252,13 @@ export function reassignDepartment(db: Firestore, admin: CloudUser, auditId: str
 export function setAuditStatus(db: Firestore, admin: CloudUser, auditId: string, status: AuditStatus) {
   if (admin.role !== 'admin') return Promise.reject(new Error('Solo un administrador cambia el estado de la auditoría.'));
   const refs = auditRefs(db, auditId);
-  const batch = writeBatch(db);
-  batch.update(refs.audit, { status, completedAt: status === 'in_progress' ? null : new Date().toISOString(), ...stamp(admin) });
-  logEvent(batch, refs.events, admin, 'status', status);
-  return batch.commit();
+  return runTransaction(db, async tx => {
+    const snap = await tx.get(refs.audit);
+    if (!snap.exists()) throw new Error('La auditoría no existe.');
+    if (status !== 'in_progress' && !allDevicesConfirmed(snap.data())) throw new Error('Solicita el cierre y espera la confirmación de todos los dispositivos.');
+    tx.update(refs.audit, { status, completedAt: status === 'in_progress' ? null : new Date().toISOString(), ...(status === 'in_progress' ? { closingToken: null, deviceConfirmations: {} } : {}), ...stamp(admin) });
+    logEvent(tx, refs.events, admin, 'status', status);
+  });
 }
 export function saveAuditNotes(db: Firestore, user: CloudUser, auditId: string, notes: string, expectedNotes: string) {
   const ref = auditRefs(db, auditId).audit;
@@ -262,9 +269,16 @@ export function saveAuditNotes(db: Firestore, user: CloudUser, auditId: string, 
     transaction.update(ref, { notes: notes.slice(0, 10000), ...stamp(user) });
   });
 }
-export function saveMember(db: Firestore, admin: CloudUser, uid: string, member: { name: string; email?: string; role: 'admin' | 'auditor'; active: boolean }) {
+export async function saveMember(db: Firestore, admin: CloudUser, uid: string, member: { name: string; email?: string; role: 'admin' | 'auditor'; active: boolean } & AccessScope) {
   const email = member.email?.trim();
-  return setDoc(doc(db, 'members', uid.trim()), { name: member.name.trim(), ...(email ? { email } : {}), role: member.role, active: member.active, ...stamp(admin) });
+  const companyIds = [...new Set(member.companyIds ?? [])], auditIds = [...new Set(member.auditIds ?? [])];
+  if (companyIds.length + auditIds.length > 10) throw new Error('Selecciona hasta 10 empresas o auditorías por persona.');
+  const visibleCompanyIds = [...new Set((await Promise.all(auditIds.map(async id => {
+    const audit = await getDoc(doc(db, 'audits', id));
+    if (!audit.exists()) throw new Error('Una auditoría seleccionada ya no existe.');
+    return String(audit.data().companyId);
+  }))))];
+  return setDoc(doc(db, 'members', uid.trim()), { name: member.name.trim(), ...(email ? { email } : {}), role: member.role, active: member.active, allAccess: member.allAccess !== false, companyIds, auditIds, visibleCompanyIds, ...stamp(admin) });
 }
 
 // Conversión de documentos de Firestore al modelo de la aplicación.
@@ -309,8 +323,9 @@ export async function verifyAuditIntegrity(db: Firestore, auditId: string) {
 }
 
 export const HISTORY_PAGE_SIZE = 20;
-export async function readAuditHistory(db: Firestore, cursor?: QueryDocumentSnapshot) {
-  const snapshot = await getDocs(query(collection(db, 'audits'), where('status', 'in', ['completed', 'closed']),
-    ...(cursor ? [startAfter(cursor)] : []), limit(HISTORY_PAGE_SIZE)));
+export async function readAuditHistory(db: Firestore, cursor?: QueryDocumentSnapshot, user: CloudUser = { uid: '', name: '', role: 'admin' }) {
+  const source = scopedAudits(db, user, where('status', 'in', ['completed', 'closed']), ...(cursor ? [startAfter(cursor)] : []), limit(HISTORY_PAGE_SIZE));
+  if (!source) return { audits: [], cursor: undefined, hasMore: false };
+  const snapshot = await getDocs(source);
   return { audits: snapshot.docs.map(d => toAudit(d.id, d.data())), cursor: snapshot.docs.at(-1), hasMore: snapshot.size === HISTORY_PAGE_SIZE };
 }

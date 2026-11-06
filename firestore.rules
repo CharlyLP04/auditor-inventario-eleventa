@@ -7,9 +7,48 @@ service cloud.firestore {
     function memberDoc() { return get(/databases/$(database)/documents/members/$(request.auth.uid)); }
     function isMember() { return signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid)) && memberDoc().data.active == true; }
     function isAdmin() { return isMember() && memberDoc().data.role == 'admin'; }
+    // Compatibilidad: los miembros existentes conservan alcance global hasta que un admin lo limite.
+    function allAccess() { return isAdmin() || memberDoc().data.get('allAccess', true) == true; }
+    function companyAccess(id) { return isMember() && (allAccess() || id in memberDoc().data.get('companyIds', []) || id in memberDoc().data.get('visibleCompanyIds', [])); }
+    function auditAccessData(id, data) { return isMember() && (allAccess() || data.companyId in memberDoc().data.get('companyIds', []) || id in memberDoc().data.get('auditIds', [])); }
+    function auditAccess(id) { return auditAccessData(id, auditData(id)); }
     function auditData(auditId) { return get(/databases/$(database)/documents/audits/$(auditId)).data; }
     function inProgress(auditId) { return auditData(auditId).status == 'in_progress'; }
     function initializing(auditId) { return isAdmin() && auditData(auditId).status == 'initializing'; }
+    // Dispositivos: registro al entrar, confirmación explícita por navegador; sin latidos.
+    // deviceOwners: mapa id -> uid (máximo 100); deviceConfirmations: id -> true, reiniciado por solicitud.
+    function deviceUpdate() {
+      let id = request.resource.data.lastDevice;
+      let owners = resource.data.get('deviceOwners', {});
+      let next = request.resource.data.get('deviceOwners', {});
+      return resource.data.status == 'in_progress' && text(id, 200) && next is map && next.size() <= 100
+        && ((changed().hasOnly(['deviceOwners', 'lastDevice'])
+          && next.diff(owners).affectedKeys().hasOnly([id]) && next[id] == request.auth.uid
+          && (!(id in owners) || owners[id] == request.auth.uid))
+        || (changed().hasOnly(['deviceConfirmations', 'lastDevice']) && owners[id] == request.auth.uid
+          && resource.data.get('closingToken', null) != null
+          && request.resource.data.deviceConfirmations is map
+          && request.resource.data.deviceConfirmations.diff(resource.data.get('deviceConfirmations', {})).affectedKeys().hasOnly([id])
+          && request.resource.data.deviceConfirmations[id] == true));
+    }
+    function validAdminAuditUpdate() {
+      let owners = resource.data.get('deviceOwners', {});
+      let closing = resource.data.get('closingToken', null);
+      let nextClosing = request.resource.data.get('closingToken', null);
+      let changingStatus = request.resource.data.status != resource.data.status;
+      return request.resource.data.status in ['initializing', 'in_progress', 'completed', 'closed'] && (!changed().hasAny(['deviceOwners', 'deviceConfirmations', 'closingToken', 'lastDevice'])
+        || (changed().hasOnly(['closingToken', 'deviceConfirmations']) && request.resource.data.deviceConfirmations == {}
+          && resource.data.status == 'in_progress' && (nextClosing == null || (closing == null && text(nextClosing, 64) && nextClosing.size() > 0)))
+        || (changingStatus && request.resource.data.status == 'in_progress' && nextClosing == null && request.resource.data.deviceConfirmations == {}
+          && request.resource.data.get('deviceOwners', {}) == owners && !changed().hasAny(['lastDevice'])))
+        && (!changingStatus || request.resource.data.status == 'in_progress' || owners.size() == 0
+          || (closing != null && resource.data.get('deviceConfirmations', {}).keys().hasAll(owners.keys())));
+    }
+    function canCapture(auditId) {
+      let data = auditData(auditId);
+      let id = request.resource.data.get('deviceId', 'legacy');
+      return data.get('closingToken', null) == null || (data.get('deviceOwners', {}).get(id, '') == request.auth.uid && !(id in data.get('deviceConfirmations', {})));
+    }
     function validCountChange(auditId) {
       let code = request.resource.data.lastCode;
       let captureId = request.resource.data.lastCapture;
@@ -40,15 +79,36 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/members/$(request.auth.uid)).data.active == true;
       allow update, delete: if false;
     }
+    function ids(values) {
+      return values is list && values.size() <= 10
+        && (values.size() <= 0 || (text(values[0], 200) && values[0].size() > 0 && !values[0].matches('.*[/].*')))
+        && (values.size() <= 1 || (text(values[1], 200) && values[1].size() > 0 && !values[1].matches('.*[/].*')))
+        && (values.size() <= 2 || (text(values[2], 200) && values[2].size() > 0 && !values[2].matches('.*[/].*')))
+        && (values.size() <= 3 || (text(values[3], 200) && values[3].size() > 0 && !values[3].matches('.*[/].*')))
+        && (values.size() <= 4 || (text(values[4], 200) && values[4].size() > 0 && !values[4].matches('.*[/].*')))
+        && (values.size() <= 5 || (text(values[5], 200) && values[5].size() > 0 && !values[5].matches('.*[/].*')))
+        && (values.size() <= 6 || (text(values[6], 200) && values[6].size() > 0 && !values[6].matches('.*[/].*')))
+        && (values.size() <= 7 || (text(values[7], 200) && values[7].size() > 0 && !values[7].matches('.*[/].*')))
+        && (values.size() <= 8 || (text(values[8], 200) && values[8].size() > 0 && !values[8].matches('.*[/].*')))
+        && (values.size() <= 9 || (text(values[9], 200) && values[9].size() > 0 && !values[9].matches('.*[/].*')));
+    }
     function memberFields() {
-      return request.resource.data.keys().hasOnly(['name', 'email', 'role', 'active', 'updatedBy', 'updatedAt'])
+      return request.resource.data.keys().hasOnly(['name', 'email', 'role', 'active', 'updatedBy', 'updatedAt', 'allAccess', 'companyIds', 'auditIds', 'visibleCompanyIds'])
         && text(request.resource.data.name, 200) && request.resource.data.name.size() > 0
         && optionalText(request.resource.data, 'email', 320)
+        && request.resource.data.get('allAccess', true) is bool
+        && ids(request.resource.data.get('companyIds', [])) && ids(request.resource.data.get('auditIds', []))
+        && ids(request.resource.data.get('visibleCompanyIds', []))
+        && request.resource.data.get('companyIds', []).size() + request.resource.data.get('auditIds', []).size() <= 10
+        && request.resource.data.get('visibleCompanyIds', []).size() <= 10
         && request.resource.data.role in ['admin', 'auditor'] && request.resource.data.active is bool && stamped();
     }
     match /members/{uid} {
-      allow read: if isMember() || (signedIn() && request.auth.uid == uid);
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if memberFields() && (isAdmin() || (signedIn() && uid == request.auth.uid
+        && (!request.resource.data.keys().hasAny(['allAccess', 'companyIds', 'auditIds', 'visibleCompanyIds'])
+          || (request.resource.data.get('companyIds', []) == [] && request.resource.data.get('auditIds', []) == [] && request.resource.data.get('visibleCompanyIds', []) == []
+            && (request.resource.data.allAccess == false || request.resource.data.role == 'admin')))
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.email == request.resource.data.name + '@auth.grid.mx'
         && ((request.resource.data.role == 'auditor' && request.resource.data.active == false)
@@ -61,7 +121,7 @@ service cloud.firestore {
     }
 
     match /companies/{companyId} {
-      allow read: if isMember();
+      allow read: if companyAccess(companyId);
       allow create, update: if isAdmin() && text(request.resource.data.name, 200) && request.resource.data.name.size() > 0;
       allow delete: if false;
     }
@@ -72,34 +132,37 @@ service cloud.firestore {
     }
 
     match /audits/{auditId} {
-      allow read: if isMember();
+      allow read: if auditAccessData(auditId, resource.data);
       allow create: if isAdmin() && request.resource.data.status in ['initializing', 'in_progress'] && request.resource.data.createdBy == request.auth.uid
         && text(request.resource.data.companyId, 200) && request.resource.data.period.matches('^[0-9]{4}-(0[1-9]|1[0-2])$');
       // Solo un administrador cambia estado, catálogo o datos; cualquier miembro puede escribir notas mientras está en curso.
-      allow update: if isAdmin()
-        || (isMember() && resource.data.status == 'in_progress' && changed().hasOnly(['notes', 'updatedBy', 'updatedAt']) && text(request.resource.data.notes, 10000) && stamped());
+      allow update: if (isAdmin() && validAdminAuditUpdate())
+        || (auditAccessData(auditId, resource.data) && deviceUpdate())
+        || (auditAccessData(auditId, resource.data) && resource.data.status == 'in_progress' && changed().hasOnly(['notes', 'updatedBy', 'updatedAt']) && text(request.resource.data.notes, 10000) && stamped());
       allow delete: if false;
 
       match /catalog/{chunk} {
-        allow read: if isMember();
+        allow read: if auditAccess(auditId);
         allow write: if isAdmin();
       }
 
       // Contadores compartidos: solo cambian q (total), n (capturas) y u (capturas por persona), siempre con increment
       // desde el cliente y en el mismo lote que su captura. La consistencia se puede verificar recalculando desde captures.
       match /counts/{bucket} {
-        allow read: if isMember();
+        allow read: if auditAccess(auditId);
         allow create: if isAdmin();
-        allow update: if initializing(auditId) || (isMember() && inProgress(auditId) && validCountChange(auditId));
+        allow update: if initializing(auditId) || (auditAccess(auditId) && inProgress(auditId) && validCountChange(auditId));
         allow delete: if initializing(auditId);
       }
 
       // Historial inmutable: cada captura la crea su autor y nadie la puede editar ni borrar (una corrección es otra captura).
       match /captures/{captureId} {
-        allow read: if isMember();
-        allow create: if isMember() && (inProgress(auditId) || initializing(auditId))
-          && request.resource.data.keys().hasOnly(['code', 'delta', 'mode', 'observed', 'by', 'byName', 'at', 'clientAt', 'device', 'department', 'voids', 'outsideAssignment'])
+        allow read: if auditAccess(auditId);
+        allow create: if auditAccess(auditId) && (inProgress(auditId) || initializing(auditId))
+          && request.resource.data.keys().hasOnly(['code', 'delta', 'mode', 'observed', 'by', 'byName', 'at', 'clientAt', 'device', 'deviceId', 'department', 'voids', 'outsideAssignment'])
           && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time
+          && canCapture(auditId)
+          && optionalText(request.resource.data, 'deviceId', 200)
           && text(request.resource.data.code, 128) && request.resource.data.code.size() > 0
           && request.resource.data.delta is number && request.resource.data.delta >= -1000000000 && request.resource.data.delta <= 1000000000
           && request.resource.data.mode in ['add', 'set', 'undo', 'unregistered', 'link', 'migrated']
@@ -109,9 +172,9 @@ service cloud.firestore {
 
       // Departamentos: tomar uno libre, soltar o completar el propio. Reasignar el de otra persona solo lo hace un administrador.
       match /departments/{departmentId} {
-        allow read: if isMember();
+        allow read: if auditAccess(auditId);
         allow create: if isAdmin();
-        allow update: if initializing(auditId) || (isMember() && inProgress(auditId)
+        allow update: if initializing(auditId) || (auditAccess(auditId) && inProgress(auditId)
           && changed().hasOnly(['assignee', 'assigneeName', 'status', 'updatedBy', 'updatedAt']) && stamped()
           && request.resource.data.status in ['pending', 'in_progress', 'done']
           && (isAdmin()
@@ -123,12 +186,12 @@ service cloud.firestore {
       // No encontrados: un registro por código, escrito con set + merge para que dos teléfonos (incluso sin conexión)
       // converjan en el mismo documento. Cada persona escribe solo su etiqueta (labels.<uid>); nunca se borran.
       match /unregistered/{codeId} {
-        allow read: if isMember();
-        allow create: if initializing(auditId) || (isMember() && inProgress(auditId)
+        allow read: if auditAccess(auditId);
+        allow create: if initializing(auditId) || (auditAccess(auditId) && inProgress(auditId)
           && request.resource.data.keys().hasOnly(['code', 'department', 'labels'])
           && text(request.resource.data.code, 128) && request.resource.data.code.size() > 0 && optionalText(request.resource.data, 'department', 200)
           && request.resource.data.labels.keys().hasOnly([request.auth.uid]));
-        allow update: if initializing(auditId) || (isMember() && inProgress(auditId) && request.resource.data.code == resource.data.code
+        allow update: if initializing(auditId) || (auditAccess(auditId) && inProgress(auditId) && request.resource.data.code == resource.data.code
           && (resource.data.get('linkedTo', null) == null || (request.resource.data.get('excluded', false) == true && request.resource.data.get('linkedTo', null) == resource.data.linkedTo))
           && (request.resource.data.get('linkedTo', null) == null || request.resource.data.get('excluded', false) == true)
           && (resource.data.get('excluded', false) == false || request.resource.data.get('linkedTo', null) == resource.data.get('linkedTo', null))
@@ -141,8 +204,8 @@ service cloud.firestore {
       }
 
       match /events/{eventId} {
-        allow read: if isMember();
-        allow create: if isMember() && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
+        allow read: if auditAccess(auditId);
+        allow create: if auditAccess(auditId) && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
         allow update, delete: if false;
       }
     }

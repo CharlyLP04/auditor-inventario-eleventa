@@ -1,3 +1,5 @@
+import { BackupPanel } from './BackupPanel';
+import { ClosingPanel } from './ClosingPanel';
 import { useViewPreference, useViewScroll } from '../../hooks/useViewPreference';
 import { auditLink } from '../../services/cloud/teamState';
 import { transition } from '../../services/transition';
@@ -54,7 +56,8 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
   const stats = useMemo(() => calculateStats(products), [products]);
   const isAdmin = user.role === 'admin';
   const company = companies.find(c => c.id === audit?.companyId);
-  const readOnly = audit?.status !== 'in_progress';
+  const readOnly = audit?.status !== 'in_progress' || Boolean(audit?.closingToken) || !store.deviceRegistered;
+  const visibleMembers = [...members, ...store.departments.filter(d => d.assignee && !members.some(m => m.uid === d.assignee)).map(d => ({ uid: d.assignee!, name: d.assigneeName ?? 'Compañero', role: 'auditor' as const, active: true }))];
   const mine = store.departments.filter(d => d.assignee === user.uid);
 
   if (store.loading && audit) return <div><p role="status" className="message">Cargando catálogo y conteos completos…</p>{store.error && <p role="alert">{store.error}</p>}<button className="secondary" onClick={onBack}>Volver a auditorías</button></div>;
@@ -100,6 +103,8 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
     <AuditContext key={audit.id} audit={record} companyName={company?.name} busy={!online || !store.synced} pendingCount={stats.notCountedCount} canManage={isAdmin}
       updateAudit={async (_id, patch, expectedNotes) => patch.status !== audit.status ? store.setAuditStatus(patch.status) : store.saveNotes(patch.notes ?? '', expectedNotes ?? '')}
       onFinish={isAdmin ? () => setExporting(true) : undefined} />
+    {audit.status !== 'in_progress' && isAdmin && <BackupPanel db={db} auditId={auditId} online={online && store.synced} />}
+    <ClosingPanel db={db} audit={audit} user={user} members={visibleMembers} synced={store.synced} online={online} />
     <p className="cloud-mine" role="status">{mine.length ? <>Tus departamentos: <strong>{mine.map(d => d.name).join(', ')}</strong></> : 'Aún no tomas ningún departamento. Elige uno en Departamentos para evitar contar lo mismo que otra persona.'}</p>
     {store.error && <p role="alert" className="message warning">{store.error} <button className="secondary" onClick={() => store.setError('')}>Entendido</button></p>}
     {store.loading && <p role="status" className="message">Cargando catálogo…</p>}
@@ -110,7 +115,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
 
     {tab === 'departments' && <DepartmentBoard store={store} user={user} members={members} online={online} products={products} readOnly={readOnly} />}
     {tab === 'scanner' && (readOnly
-      ? <p className="message">La auditoría está {audit.status === 'completed' ? 'completada' : 'cerrada'}. Un administrador puede reabrirla.</p>
+      ? <p className="message">{audit.status === 'in_progress' ? 'Conteo pausado: revisa la comprobación de dispositivos.' : 'Auditoría finalizada. Un administrador puede reabrirla.'}</p>
       : <div className="count-layout">
         <Suspense fallback={<p role="status">Abriendo escáner…</p>}><BarcodeScanner onScan={handleScan} lastScannedInfo={lastScannedInfo} products={products} preferences={prefs} onPreferencesChange={savePrefs} canUndo={store.canUndo}
           onUndo={async () => { const done = await store.undo(); if (done) setLastScannedInfo(null); return done; }}
@@ -126,7 +131,7 @@ export function CloudAuditView({ db, user, auditId, companies, members, online, 
       }} />}
     {tab === 'stats' && <>
       <CatalogVerification products={products} report={audit.catalog?.report} />
-      <PeopleProgress contributors={store.contributors} members={members} products={products} />
+      <PeopleProgress contributors={store.contributors} members={visibleMembers} products={products} />
       {isAdmin && <IntegrityCheck verify={store.verify} />}
       <DepartmentSummary products={products} />
       <AuditSummary stats={stats} products={products} />

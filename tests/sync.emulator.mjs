@@ -1,10 +1,13 @@
+import { linkRecoveryEmail, requestPasswordRecovery } from '../src/services/cloud/recovery.ts';
+import { registerDevice, requestClosing, confirmDevice, deviceKey } from '../src/services/cloud/closing.ts';
+import { createAuditBackup } from '../src/services/cloud/backup.ts';
 // Escenarios de dos personas contando la misma auditoría, con dos clientes reales del SDK contra el emulador.
 // Ejecutar con: npm run test:cloud
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, applyActionCode, reload, signOut, signInWithEmailAndPassword, confirmPasswordReset } from 'firebase/auth';
 import { initializeFirestore, connectFirestoreEmulator, doc, setDoc, getDoc, disableNetwork, enableNetwork, waitForPendingWrites, onSnapshot, writeBatch, terminate } from 'firebase/firestore';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import {
@@ -27,7 +30,7 @@ async function client(name, email) {
   databases.push(db);
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
   const { user } = await createUserWithEmailAndPassword(auth, email, 'contraseña-de-prueba');
-  return { db, uid: user.uid };
+  return { db, auth, uid: user.uid };
 }
 const catalog = [
   { code: '001', description: 'Leche entera', cost: 10, price: 20, department: 'Lácteos', theoreticalStock: 30, physicalStock: 0, counted: false },
@@ -201,7 +204,23 @@ test('una corrección desactualizada no borra lo contado en otro dispositivo', a
 });
 
 test('11 · al completar la auditoría ya no se aceptan capturas y el balance final es consistente', async () => {
+  await registerDevice(oscar.db, oscar.user, auditId);
+  await registerDevice(charly.db, charly.user, auditId);
+  await assert.rejects(setAuditStatus(oscar.db, oscar.user, auditId, 'completed'), /confirmación/);
+  await requestClosing(oscar.db, auditId);
+  const token = (await getDoc(auditRefs(oscar.db, auditId).audit)).data().closingToken;
+  await confirmDevice(oscar.db, oscar.user, auditId, token);
+  await assert.rejects(setAuditStatus(oscar.db, oscar.user, auditId, 'completed'), /confirmación/);
+  await confirmDevice(charly.db, charly.user, auditId, token);
+  await assert.rejects(recordCapture(charly.db, charly.user, auditId, { code: '001', quantity: 1, mode: 'add' }).committed);
   await setAuditStatus(oscar.db, oscar.user, auditId, 'completed');
+  const backup = await createAuditBackup(oscar.db, auditId), data = JSON.parse(backup.payload);
+  assert.equal(data.audit.id, auditId);
+  assert.equal(data.collections.counts.length, 16);
+  assert.ok(data.collections.captures.length > 0);
+  assert.deepEqual(data.integrityDifferences, []);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(backup.payload));
+  assert.equal(backup.sha256, Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join(''));
   await assert.rejects(recordCapture(charly.db, charly.user, auditId, { code: '001', quantity: 1, mode: 'add', current: { physicalStock: 0 }, department: 'Lácteos' }).committed);
   const { products } = await state(charly);
   const stats = calculateStats(products);
@@ -257,4 +276,40 @@ test('historial: lee páginas de 20, sin duplicados ni auditorías abiertas', as
   assert.equal(ids.filter(id=>id.startsWith('history_')).length,23);
   assert.ok([...first.audits,...second.audits].every(a=>['completed','closed'].includes(a.status)));
   assert.equal(second.hasMore,false);
+});
+
+test('cierre: la cola offline llega antes de confirmar y una solicitud cancelada no acepta confirmaciones viejas', async () => {
+  await registerDevice(oscar.db, oscar.user, auditId); await registerDevice(charly.db, charly.user, auditId);
+  await disableNetwork(charly.db);
+  const capture = recordCapture(charly.db, charly.user, auditId, { code: '001', quantity: 2, mode: 'add' });
+  await requestClosing(oscar.db, auditId);
+  const token = (await getDoc(auditRefs(oscar.db, auditId).audit)).data().closingToken;
+  await confirmDevice(oscar.db, oscar.user, auditId, token);
+  await assert.rejects(setAuditStatus(oscar.db, oscar.user, auditId, 'closed'), /confirmación/);
+  await enableNetwork(charly.db); await capture.committed;
+  await confirmDevice(charly.db, charly.user, auditId, token);
+  assert.equal((await getDoc(auditRefs(oscar.db, auditId).audit)).data().deviceConfirmations[deviceKey(charly.uid)], true);
+  await requestClosing(oscar.db, auditId, true);
+  await assert.rejects(confirmDevice(charly.db, charly.user, auditId, token), /cambió/);
+  await assert.rejects(createAuditBackup(oscar.db, auditId), /Finaliza/);
+});
+
+test('recuperación: verificar correo conserva UID y permite recuperar contraseña sin correo sintético', async () => {
+  const c = await client('recovery-test','recuperacion@auth.grid.mx');
+  const uid = c.uid, oldPassword = 'contraseña-de-prueba';
+  await linkRecoveryEmail(c.auth,'persona@example.test',oldPassword);
+  assert.equal(c.auth.currentUser.email,'recuperacion@auth.grid.mx','el acceso viejo sigue hasta verificar');
+  const codes = async () => (await (await fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-auditor/oobCodes')).json()).oobCodes;
+  const verification = (await codes()).find(c => c.requestType === 'VERIFY_AND_CHANGE_EMAIL' && c.email === 'recuperacion@auth.grid.mx');
+  assert.ok(verification);
+  await applyActionCode(c.auth, verification.oobCode); await reload(c.auth.currentUser);
+  assert.equal(c.auth.currentUser.uid,uid); assert.equal(c.auth.currentUser.emailVerified,true);
+  await signOut(c.auth);
+  const login = await signInWithEmailAndPassword(c.auth,'persona@example.test',oldPassword);
+  assert.equal(login.user.uid,uid);
+  await signOut(c.auth); await requestPasswordRecovery(c.auth,'persona@example.test');
+  const reset = (await codes()).find(c => c.requestType === 'PASSWORD_RESET' && c.email === 'persona@example.test');
+  assert.ok(reset); await confirmPasswordReset(c.auth,reset.oobCode,'nueva-contraseña-prueba');
+  assert.equal((await signInWithEmailAndPassword(c.auth,'persona@example.test','nueva-contraseña-prueba')).user.uid,uid);
+  await assert.rejects(requestPasswordRecovery(c.auth,'recuperacion@auth.grid.mx'),/correo real/);
 });

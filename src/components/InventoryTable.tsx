@@ -54,6 +54,8 @@ export function InventoryTable({
     onLink: (code: string, target: string) => Promise<boolean>;
   };
 }) {
+  const [fieldView, setFieldView] = useViewPreference(viewKey + ':field-view', !readOnly, (v): v is boolean => typeof v === 'boolean');
+  const [differencesOnly, setDifferencesOnly] = useState(false);
   const [metadataProduct, setMetadataProduct] = useState<Product | null>(null);
   const [unregisteredCode, setUnregisteredCode] = useState<string | null>(null);
   const unregisteredProduct = products.find(p => p.code === unregisteredCode);
@@ -87,7 +89,10 @@ export function InventoryTable({
     }
     return counts;
   }, [scopedProducts]);
-  const filtered = useMemo(() => scopedProducts.filter(p => matchesFilter(p, filter)), [scopedProducts, filter]);
+  const filtered = useMemo(() => {
+    const rows = scopedProducts.filter(p => matchesFilter(p, filter) && (!differencesOnly || ['missing', 'surplus', 'unregistered'].includes(productStatus(p))));
+    return differencesOnly ? rows.toSorted((a, b) => Math.abs(b.physicalStock - b.theoreticalStock) - Math.abs(a.physicalStock - a.theoreticalStock)) : rows;
+  }, [scopedProducts, filter, differencesOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / 50));
   const currentPage = Math.min(page, totalPages - 1);
@@ -110,12 +115,16 @@ export function InventoryTable({
     finally { saving.current = false; setSavingCode(null); }
   };
   const save = (p: Product) => updateQuantity(p, draft.trim() ? Number(draft) : NaN);
-  const clearFilters = () => { setSearch(''); setDepartment(''); setFilter('all'); setPage(0); setEditing(null); };
+  const clearFilters = () => { setSearch(''); setDepartment(''); setFilter('all'); setDifferencesOnly(false); setPage(0); setEditing(null); };
 
   return (
-    <section className="inventory-workspace" aria-label="Productos del inventario">
+    <section className={`inventory-workspace${fieldView ? ' field-counting' : ''}`} aria-label="Productos del inventario">
       {unregisteredProduct && unregisteredActions && <UnregisteredEditor product={unregisteredProduct} products={products} onClose={() => setUnregisteredCode(null)} {...unregisteredActions} />}
       {metadataProduct && onUpdateProduct && <ProductEditor product={metadataProduct} departments={departments} isAdmin={isAdmin} onSave={onUpdateProduct} onClose={() => setMetadataProduct(null)} />}
+      <div className="inventory-view-switch" aria-label="Vista del inventario">
+        <button className="secondary" aria-pressed={fieldView} onClick={() => setFieldView(!fieldView)}>{fieldView ? 'Mostrar precios y costos' : 'Vista simple de conteo'}</button>
+        <button className="secondary" aria-pressed={differencesOnly} onClick={() => { setDifferencesOnly(!differencesOnly); setFilter('all'); setPage(0); }}>{differencesOnly ? 'Mostrar todos' : 'Revisar diferencias primero'}</button>
+      </div>
       {/* Barra de Búsqueda y Filtros con estilo Swatch */}
       <div className="inventory-toolbar">
         <label>
@@ -157,7 +166,7 @@ export function InventoryTable({
 
       <div className="inventory-results">
         <p role="status" className="result-count">{deferredSearch !== search ? 'Buscando…' : `${filtered.length.toLocaleString('es-MX')} productos · Página ${currentPage + 1} de ${totalPages}`}</p>
-        {(search || department || filter !== 'all') && <button className="text-button" onClick={clearFilters}><X size={14} aria-hidden="true" /> Limpiar filtros</button>}
+        {(search || department || filter !== 'all' || differencesOnly) && <button className="text-button" onClick={clearFilters}><X size={14} aria-hidden="true" /> Limpiar filtros</button>}
         <span className="inventory-save" role="status">{savingCode ? 'Guardando conteo…' : savedCode ? <><Check size={14} aria-hidden="true" /> {savedCode} guardado</> : 'Toca una cantidad para corregirla'}</span>
       </div>
       {error && <p role="alert" className="message warning">{error}</p>}

@@ -24,7 +24,7 @@ export function AccountForm({ onSubmit, children, shared = false }: { onSubmit: 
       e.preventDefault(); if (busy) return; setBusy(true); setError('');
       try { await onSubmit(name, password, register); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo abrir la cuenta.'); } finally { setBusy(false); }
     }}><fieldset disabled={busy} className="workspace-fields workspace-form grid-login-fields">
-      <label><span>Nombre de usuario</span><input name="username" required autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="ej. admin_tienda" pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{2,31}" minLength={3} maxLength={32} value={name} onChange={e => setName(e.target.value)} /></label>
+      <label><span>{shared && !register ? 'Usuario o correo verificado' : 'Nombre de usuario'}</span><input name="username" required autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="ej. admin_tienda" pattern={shared && !register ? undefined : '[a-zA-Z0-9][a-zA-Z0-9_\\-]{2,31}'} minLength={3} maxLength={shared && !register ? 320 : 32} value={name} onChange={e => setName(e.target.value)} /></label>
       <label><span>Contraseña</span><input name="password" required type="password" autoComplete={register ? 'new-password' : 'current-password'} placeholder="Mínimo 8 caracteres" minLength={8} maxLength={256} value={password} onChange={e => setPassword(e.target.value)} /></label>
       {error && <p role="alert" className="message warning">{error}</p>}
       <div className="grid-login-actions">

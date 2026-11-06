@@ -633,3 +633,19 @@
 @keyframes grid-prompt-ready { from { opacity: .25; translate: -2px 0; } to { opacity: 1; translate: 0 0; } }
 @keyframes grid-cursor-ready { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @keyframes grid-cursor-hover { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* Conteo de campo: menos columnas sin alterar los datos ni la vista de revisión. */
+.inventory-view-switch { display:flex; flex-wrap:wrap; gap:8px; }
+.inventory-view-switch button[aria-pressed="true"] { border-color:var(--app-accent); }
+.field-counting .price-cell, .field-counting .cost-cell,
+.field-counting .inventory-columns > :nth-child(3), .field-counting .inventory-columns > :nth-child(4) { display:none; }
+@media(min-width:900px) {
+ .field-counting .inventory-row, .field-counting .inventory-columns { grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1.5fr) minmax(160px,1fr); }
+}
+.access-options { display:grid; gap:10px; margin-top:12px; }
+.access-options label { display:flex; align-items:center; gap:8px; }
+.access-options input[type="checkbox"] { width:20px; height:20px; flex:none; }
+.cloud-members > li { flex-wrap:wrap; }
+.cloud-members > li > details { width:100%; }
+.closing-panel button { margin:4px; }
+.account-recovery { margin-bottom:12px; }

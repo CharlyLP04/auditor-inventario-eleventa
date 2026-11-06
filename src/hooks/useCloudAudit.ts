@@ -1,5 +1,8 @@
+import { registerDevice, deviceKey } from '../services/cloud/closing';
+import { scopedAudits, scopedCompanies } from '../services/cloud/access';
+import type { AccessScope } from '../services/cloud/access';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, where } from 'firebase/firestore';
 import type { DocumentData, Firestore } from 'firebase/firestore';
 import type { Product, CountMode } from '../types';
 import {
@@ -14,7 +17,7 @@ import { authMessage } from './useCloudSession';
 import { auditDataLoaded, summarizeSync } from '../services/cloud/teamState';
 import type { SyncSource, SyncMetadata } from '../services/cloud/teamState';
 
-export interface CloudMember { uid: string; name: string; email?: string; role: 'admin' | 'auditor'; active: boolean; }
+export interface CloudMember extends AccessScope { uid: string; name: string; email?: string; role: 'admin' | 'auditor'; active: boolean; }
 
 /** Señal de conexión del dispositivo: la interfaz la muestra junto con las capturas pendientes de enviar. */
 export function useOnline() {
@@ -35,18 +38,20 @@ export function useCloudWorkspace(db: Firestore, user: CloudUser, showAuditList 
   useEffect(() => {
     const fail = (e: unknown) => setError(authMessage(e));
     const stops = [
-      onSnapshot(collection(db, 'companies'), s => setCompanies(s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<CloudCompany, 'id'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
+      ...(scopedCompanies(db, user) ? [onSnapshot(scopedCompanies(db, user)!, s => setCompanies(s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<CloudCompany, 'id'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail)] : []),
 
-      onSnapshot(collection(db, 'members'), s => setMembers(s.docs.map(d => ({ uid: d.id, ...(d.data() as Omit<CloudMember, 'uid'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail),
+      user.role === 'admin' ? onSnapshot(collection(db, 'members'), s => setMembers(s.docs.map(d => ({ uid: d.id, ...(d.data() as Omit<CloudMember, 'uid'>) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))), fail) : onSnapshot(doc(db, 'members', user.uid), s => setMembers(s.exists() ? [{ uid: s.id, ...s.data() } as CloudMember] : []), fail),
     ];
     return () => stops.forEach(stop => stop());
-  }, [db, user.uid]);
+  }, [db, user]);
   useEffect(() => {
     if (!showAuditList) return;
-    return onSnapshot(query(collection(db, 'audits'), where('status', '==', 'in_progress')),
+    const source = scopedAudits(db, user, where('status', '==', 'in_progress'));
+    if (!source) return;
+    return onSnapshot(source,
       snapshot => setAudits(snapshot.docs.map(d => toAudit(d.id, d.data())).sort((a, b) => b.period.localeCompare(a.period))),
       error => setError(authMessage(error)));
-  }, [db, user.uid, showAuditList]);
+  }, [db, user, showAuditList]);
   return { companies, audits, members, error };
 }
 
@@ -61,6 +66,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   const [error, setError] = useState('');
   const [listenerFailed, setListenerFailed] = useState(false);
   const [pending, setPending] = useState(0);
+  const deviceRegistered = Boolean(audit?.deviceOwners?.[deviceKey(user.uid)] === user.uid);
   const [syncSources, setSyncSources] = useState<Partial<Record<SyncSource, SyncMetadata>>>({});
   const sync = summarizeSync(syncSources);
   const last = useRef<LastCapture | null>(null);
@@ -72,7 +78,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
       const old = previous[key];
       return old?.fromCache === value.fromCache && old?.hasPendingWrites === value.hasPendingWrites ? previous : { ...previous, [key]: value };
     });
-    const fail = (e: unknown) => { setListenerFailed(true); setError(authMessage(e)); };
+    const fail = (e: unknown) => { setListenerFailed(true); setAudit(null); setAuditLoaded(true); setError(authMessage(e)); };
     const stops = [
       onSnapshot(refs.audit, { includeMetadataChanges: true }, s => { setAudit(s.exists() ? toAudit(s.id, s.data()) : null); setAuditLoaded(true); metadata('audit', s.metadata); }, fail),
       onSnapshot(refs.catalog, { includeMetadataChanges: true }, s => { if (s.docChanges().length) setCatalogDocs(s.docs.map(d => { const data = d.data(); return { id: d.id, data: () => data }; })); metadata('catalog', s.metadata); }, fail),
@@ -83,6 +89,14 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     last.current = null;
     return () => stops.forEach(stop => stop());
   }, [db, auditId]);
+
+  useEffect(() => {
+    if (deviceRegistered) return;
+    if (audit?.status !== 'in_progress' || syncSources.audit?.fromCache !== false) return;
+    let active = true;
+    registerDevice(db, user, auditId).catch(e => { if (active) setError(authMessage(e)); });
+    return () => { active = false; };
+  }, [db, user, auditId, audit?.status, deviceRegistered, syncSources.audit?.fromCache]);
 
   const catalog = useMemo(() => catalogFrom(catalogDocs), [catalogDocs]);
   const [productCache] = useState(() => new WeakMap<Product, Product>());
@@ -100,6 +114,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
   }, []);
 
   const recordCount = async (code: string, quantity: number, mode: CountMode, outsideAssignment = false): Promise<Product> => {
+    if (!deviceRegistered || audit?.closingToken) throw new Error('El conteo está pausado para comprobar los dispositivos antes del cierre.');
     const current = productsRef.current.find(p => p.code === code);
     if (!current) throw new Error(`El código ${code} no está en esta auditoría.`);
     if (current.excludedAt) throw new Error(`El código ${code} fue excluido del conteo. Reincorpóralo para volver a contarlo.`);
@@ -109,6 +124,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     return { ...current, physicalStock: written.total, counted: true, lastScannedAt: new Date().toISOString() };
   };
   const register = (input: { code: string; name?: string; note?: string; quantity: number; department?: string }): Product => {
+    if (!deviceRegistered || audit?.closingToken) throw new Error('El conteo está pausado para el cierre.');
     const code = input.code.trim();
     const existing = productsRef.current.find(p => p.code === code);
     if (existing && !existing.isUnregistered) throw new Error(`El código ${code} ya existe en el catálogo; cuéntalo de forma normal.`);
@@ -119,7 +135,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     return { code, description: existing?.description ?? (input.name?.trim() || `No encontrado ${code}`), note: input.note, cost: 0, price: 0, department: input.department || 'Sin clasificar', theoreticalStock: 0, physicalStock: (existing?.physicalStock ?? 0) + input.quantity, counted: true, isUnregistered: true };
   };
   const undo = async () => {
-    if (!last.current) return false;
+    if (!last.current || audit?.closingToken || !deviceRegistered) return false;
     try {
       await undoCapture(db, user, auditId, last.current).committed;
       last.current = null; setCanUndo(false); setError(''); return true;
@@ -131,7 +147,7 @@ export function useCloudAudit(db: Firestore, user: CloudUser, auditId: string) {
     try { await action(); setError(''); return true; } catch (e) { setError(authMessage(e)); return false; }
   };
   return {
-    audit, products, departments, contributors, loading, error, setError, pending: Math.max(pending, sync.pending ? 1 : 0), synced: ready, canUndo,
+    audit, products, departments, contributors, deviceRegistered, loading, error, setError, pending: Math.max(pending, sync.pending ? 1 : 0), synced: ready, canUndo,
     recordCount, register, undo,
     editUnregistered: (code: string, patch: { name?: string; note?: string }) => optimistic(editUnregistered(db, user, auditId, code, patch)),
     excludeUnregistered: (code: string, reason: string) => awaited(() => setUnregisteredExcluded(db, user, auditId, code, true, reason)),
